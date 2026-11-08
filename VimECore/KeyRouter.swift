@@ -1,0 +1,129 @@
+/// A key press as seen by the event tap, reduced to what routing needs.
+public struct KeyInput: Equatable {
+    public var keyCode: UInt16
+    /// Characters ignoring modifiers except Shift, so ⌥F reads as "f" and ⇧G as "G".
+    public var characters: String
+    public var command = false
+    public var option = false
+    public var control = false
+    public var shift = false
+    public var isRepeat = false
+
+    public init(keyCode: UInt16, characters: String, command: Bool = false, option: Bool = false,
+                control: Bool = false, shift: Bool = false, isRepeat: Bool = false) {
+        self.keyCode = keyCode
+        self.characters = characters
+        self.command = command
+        self.option = option
+        self.control = control
+        self.shift = shift
+        self.isRepeat = isRepeat
+    }
+}
+
+public enum Mode: Equatable {
+    case passthrough
+    case hint
+}
+
+/// How a hint clicks its element, picked by the modifier held on the label's last letter.
+public enum Click: Equatable {
+    case primary
+    /// ⇧: right-click, for the context menu.
+    case secondary
+    /// ⌘: ⌘-click, which opens links in a new tab.
+    case command
+}
+
+public enum KeyAction: Equatable {
+    case pass
+    case swallow
+    case enterHint
+    case exitHint
+    case backspace
+    case type(Character, Click)
+    case scroll(ScrollCommand, isRepeat: Bool)
+    case showHelp
+}
+
+/// Shortcuts that work in every state: while VimE is paused, in apps set to Off, and during hints.
+public enum GlobalCommand: Equatable {
+    /// ⌃⌥⌘V: VimE on or off everywhere.
+    case toggleEnabled
+    /// ⌃⌥⌘⇧V: the frontmost app's rule, On → ⌥F only → Off.
+    case cycleAppRule
+}
+
+/// Decides what each key press does. The caller owns the mode; the router only
+/// remembers a pending `g` so `gg` works.
+public struct KeyRouter {
+    public static let fKeyCode: UInt16 = 3
+    public static let escapeKeyCode: UInt16 = 53
+    public static let deleteKeyCode: UInt16 = 51
+    public static let vKeyCode: UInt16 = 9
+
+    /// Plain keys VimE acts on outside text fields.
+    public static let plainKeys: Set<String> = ["f", "h", "j", "k", "l", "d", "u", "g", "G", "?"]
+
+    public private(set) var pendingG = false
+
+    public init() {}
+
+    /// Checked before anything else. Matches held-down repeats too, so they don't leak into the app;
+    /// the caller acts only on the first press.
+    public static func globalCommand(_ k: KeyInput) -> GlobalCommand? {
+        guard k.keyCode == vKeyCode, k.command, k.option, k.control else { return nil }
+        return k.shift ? .cycleAppRule : .toggleEnabled
+    }
+
+    /// `focusIsEditable` costs an Accessibility round trip, so it is only called for VimE's plain keys.
+    public mutating func route(_ k: KeyInput, mode: Mode, plainKeysAllowed: Bool,
+                               focusIsEditable: () -> Bool) -> KeyAction {
+        switch mode {
+        case .passthrough:
+            return routePassthrough(k, plainKeysAllowed: plainKeysAllowed, focusIsEditable: focusIsEditable)
+        case .hint:
+            pendingG = false
+            if k.keyCode == Self.escapeKeyCode { return .exitHint }
+            if k.isRepeat { return .swallow }
+            if k.keyCode == Self.deleteKeyCode { return .backspace }
+            if k.control { return .exitHint }
+            if k.characters.count == 1, let c = k.characters.lowercased().first, c.isLetter {
+                return .type(c, k.command ? .command : k.shift ? .secondary : .primary)
+            }
+            // ⌘ with anything else (⌘Tab, ⌘Space…) means the user moved on.
+            return k.command ? .exitHint : .swallow
+        }
+    }
+
+    private mutating func routePassthrough(_ k: KeyInput, plainKeysAllowed: Bool,
+                                           focusIsEditable: () -> Bool) -> KeyAction {
+        let wasPendingG = pendingG
+        pendingG = false
+
+        // ⌥F works everywhere, including text fields.
+        if k.option && !k.command && !k.control && k.keyCode == Self.fKeyCode {
+            return k.isRepeat ? .pass : .enterHint
+        }
+        guard plainKeysAllowed, !k.option, !k.command, !k.control,
+              Self.plainKeys.contains(k.characters), !focusIsEditable()
+        else { return .pass }
+
+        switch k.characters {
+        case "f": return k.isRepeat ? .pass : .enterHint
+        case "j": return .scroll(.down, isRepeat: k.isRepeat)
+        case "k": return .scroll(.up, isRepeat: k.isRepeat)
+        case "h": return .scroll(.left, isRepeat: k.isRepeat)
+        case "l": return .scroll(.right, isRepeat: k.isRepeat)
+        case "d": return .scroll(.halfPageDown, isRepeat: k.isRepeat)
+        case "u": return .scroll(.halfPageUp, isRepeat: k.isRepeat)
+        case "G": return .scroll(.bottom, isRepeat: false)
+        case "?": return k.isRepeat ? .swallow : .showHelp
+        case "g":
+            if wasPendingG { return .scroll(.top, isRepeat: false) }
+            pendingG = true
+            return .swallow
+        default: return .pass
+        }
+    }
+}

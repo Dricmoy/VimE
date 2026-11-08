@@ -1,0 +1,61 @@
+name: VimE
+options:
+  bundleIdPrefix: com.dric
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Xcode signs ad-hoc; `make build`/`make install` then re-sign with the local
+    # identity from scripts/setup-signing.sh so Accessibility permission survives rebuilds.
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    DEVELOPMENT_TEAM: ""
+    ENABLE_HARDENED_RUNTIME: NO
+targets:
+  VimECore:
+    type: framework
+    platform: macOS
+    sources: [VimECore]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dric.VimECore
+        GENERATE_INFOPLIST_FILE: YES
+  VimE:
+    type: application
+    platform: macOS
+    sources: [VimE]
+    dependencies:
+      - target: VimECore
+    info:
+      path: VimE/Info.plist
+      properties:
+        LSUIElement: true
+        CFBundleDisplayName: VimE
+        CFBundleIconFile: AppIcon
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.productivity
+        NSHumanReadableCopyright: Vim everywhere.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dric.VimE
+  VimECoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [VimECoreTests]
+    dependencies:
+      - target: VimECore
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  VimE:
+    build:
+      targets:
+        VimE: all
+        VimECore: all
+    test:
+      targets: [VimECoreTests]
