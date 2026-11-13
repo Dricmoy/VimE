@@ -4,6 +4,8 @@ What changed in each VimE release. New entries go under **Unreleased**; `make re
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-12
+
 First release.
 
 - **Hints everywhere:** `⌥F` labels every button, link, tab and menu in the frontmost app, including web pages in Chrome and other Chromium browsers. Type a label to click; hold `⇧` to right-click or `⌘` to ⌘-click.
