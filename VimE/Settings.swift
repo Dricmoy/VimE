@@ -49,6 +49,18 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section {
+                HStack {
+                    Button("Export…", action: exportSettings)
+                    Button("Import…", action: importSettings)
+                }
+            } header: {
+                Text("Other Macs")
+            } footer: {
+                Text("Copies your preferences and app rules to a file you can import on another Mac.")
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Shortcuts") {
                 ShortcutRows(shortcuts: Shortcuts.anywhere(plainKeys: state.bareKeys))
             }
@@ -66,6 +78,49 @@ struct SettingsView: View {
         Set(state.appRules.listed).union(state.appOptions.overrides.keys).sorted()
             .filter { AppInfo.isInstalled($0) || state.appRules.overrides[$0] != nil
                 || state.appOptions.overrides[$0] != nil }
+    }
+
+    private func exportSettings() {
+        let panel = NSSavePanel()
+        panel.title = "Export VimE Settings"
+        panel.nameFieldStringValue = "VimE Settings.json"
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try state.archive.encoded().write(to: url, options: .atomic)
+        } catch {
+            showError("Couldn't export settings", error.localizedDescription)
+        }
+    }
+
+    private func importSettings() {
+        let panel = NSOpenPanel()
+        panel.title = "Import VimE Settings"
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let archive: SettingsArchive
+        do {
+            archive = try SettingsArchive.decode(Data(contentsOf: url))
+        } catch SettingsArchive.ReadError.newerVersion {
+            return showError("Couldn't import settings", "They're from a newer version of VimE. Update VimE first.")
+        } catch {
+            return showError("Couldn't import settings", "That file isn't a VimE settings export.")
+        }
+        let confirm = NSAlert()
+        confirm.messageText = "Replace your VimE settings?"
+        confirm.informativeText = "Your preferences and app rules will be replaced with the ones in "
+            + "\"\(url.lastPathComponent)\" (\(archive.appRules.count) app rules)."
+        confirm.addButton(withTitle: "Replace")
+        confirm.addButton(withTitle: "Cancel")
+        guard confirm.runModal() == .alertFirstButtonReturn else { return }
+        state.apply(archive)
+    }
+
+    private func showError(_ title: String, _ detail: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = detail
+        alert.runModal()
     }
 
     private func addApp() {

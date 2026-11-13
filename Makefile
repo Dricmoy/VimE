@@ -4,8 +4,8 @@ RELEASE_APP := $(DERIVED)/Build/Products/Release/VimE.app
 DMG := $(DERIVED)/VimE.dmg
 XB := xcodebuild -project VimE.xcodeproj -scheme VimE -derivedDataPath $(DERIVED) -quiet
 
-.PHONY: gen build test run install dmg icon signing clean
-gen:
+.PHONY: gen build test run install update setup check-tools dmg icon signing clean
+gen: check-tools
 	xcodegen generate --quiet
 build: gen
 	$(XB) -configuration Debug build
@@ -26,6 +26,15 @@ install: gen
 	rm -rf /Applications/VimE.app
 	ditto $(RELEASE_APP) /Applications/VimE.app
 	open /Applications/VimE.app
+# Pulls the latest code and reinstalls. Your settings and Accessibility permission are kept.
+update:
+	git pull --ff-only
+	$(MAKE) install
+# First time on a Mac: signing identity, then install.
+setup: check-tools signing install
+check-tools:
+	@xcodebuild -version >/dev/null 2>&1 || { echo "Xcode is needed: install it from the App Store, then run: sudo xcode-select -s /Applications/Xcode.app"; exit 1; }
+	@command -v xcodegen >/dev/null || { echo "XcodeGen is needed: brew install xcodegen"; exit 1; }
 # Drag-to-Applications disk image of the Release build, for other Macs.
 dmg: gen
 	$(XB) -configuration Release build

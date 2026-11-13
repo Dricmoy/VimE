@@ -554,3 +554,49 @@ final class AppOptionsTests: XCTestCase {
                                focusIsEditable: { true }), .pass)
     }
 }
+
+final class SettingsArchiveTests: XCTestCase {
+    private func sample() -> SettingsArchive {
+        var rules = AppRules(fallback: .normal)
+        rules.set(.off, for: "com.example.Game")
+        var options = AppOptions(defaults: [.escLeavesTextField: false])
+        options.set(.escLeavesTextField, true, for: "com.example.Chat")
+        return SettingsArchive(plainKeys: false, showMenuBarIcon: true, showInDock: true, defaultRule: .normal,
+                               rules: rules, options: options)
+    }
+
+    func testRoundTrip() throws {
+        let archive = sample()
+        let read = try SettingsArchive.decode(archive.encoded())
+        XCTAssertEqual(read, archive)
+        XCTAssertEqual(read.rule, .normal)
+        XCTAssertEqual(read.rules.rule(for: "com.example.Game"), .off)
+        XCTAssertEqual(read.rules.rule(for: "com.example.Other"), .normal, "default rule carried over")
+        XCTAssertFalse(read.options.value(.escLeavesTextField, for: "com.example.Other"))
+        XCTAssertTrue(read.options.value(.escLeavesTextField, for: "com.example.Chat"))
+    }
+
+    func testRejectsOtherFiles() {
+        XCTAssertThrowsError(try SettingsArchive.decode(Data("{\"name\": \"x\"}".utf8))) {
+            XCTAssertEqual($0 as? SettingsArchive.ReadError, .notVimESettings)
+        }
+        XCTAssertThrowsError(try SettingsArchive.decode(Data("not json".utf8)))
+    }
+
+    func testRejectsNewerVersion() throws {
+        var archive = sample()
+        archive.version = SettingsArchive.currentVersion + 1
+        XCTAssertThrowsError(try SettingsArchive.decode(archive.encoded())) {
+            XCTAssertEqual($0 as? SettingsArchive.ReadError, .newerVersion(SettingsArchive.currentVersion + 1))
+        }
+    }
+
+    func testUnknownNamesAreDropped() throws {
+        var archive = sample()
+        archive.defaultRule = "bogus"
+        archive.appRules["com.example.New"] = "bogus"
+        let read = try SettingsArchive.decode(archive.encoded())
+        XCTAssertEqual(read.rule, AppRules.standardFallback)
+        XCTAssertNil(read.rules.overrides["com.example.New"])
+    }
+}

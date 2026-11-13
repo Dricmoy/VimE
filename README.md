@@ -92,26 +92,36 @@ Requires macOS 14+, Xcode, and XcodeGen (`brew install xcodegen`).
 
 ```sh
 git clone https://github.com/Dricmoy/VimE.git && cd VimE
-make signing  # once: a local code-signing identity, so Accessibility permission survives rebuilds
-make install  # Release build into /Applications, then launches it
+make setup    # once per Mac: a local signing identity, then a Release build into /Applications
 ```
 
 On first launch the setup window walks through granting Accessibility access. That permission is
 all VimE needs; nothing leaves your Mac.
 
+To get the latest version later:
+
+```sh
+make update   # git pull, rebuild and reinstall; settings and the Accessibility permission are kept
+```
+
+Using VimE on more than one Mac: run `make setup` on each, then copy your app rules across with
+Settings → Other Macs → Export… and Import… on the other Mac.
+
 Other targets:
 
 ```sh
+make install  # rebuild and reinstall without pulling
 make test     # unit tests for VimECore
 make run      # build and launch from the build folder
-make dmg      # build.noindex/VimE.dmg, drag-to-Applications installer for other Macs
+make dmg      # build.noindex/VimE.dmg, drag-to-Applications installer
 make icon     # redraw VimE/AppIcon.icns from scripts/make-icon.swift
 ```
 
-Without `make signing`, builds are ad-hoc signed and macOS forgets the Accessibility permission on
-every rebuild. The .dmg is signed with the same local identity, not an Apple Developer ID, so on
-another Mac the first open needs right-click → Open (or System Settings → Privacy & Security →
-Open Anyway).
+Without the signing identity (`make signing`, part of `make setup`), builds are ad-hoc signed and
+macOS forgets the Accessibility permission on every rebuild. The .dmg is signed with the same local
+identity, not an Apple Developer ID, so on another Mac macOS blocks the first open: allow it in
+System Settings → Privacy & Security → Open Anyway. Building on each Mac with `make setup` avoids
+that.
 
 ## Troubleshooting
 

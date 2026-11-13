@@ -64,6 +64,22 @@ final class AppState: ObservableObject {
         onChange()
     }
 
+    /// Preferences and per-app rules, for another Mac.
+    var archive: SettingsArchive {
+        SettingsArchive(plainKeys: bareKeys, showMenuBarIcon: showMenuBarIcon, showInDock: showInDock,
+                        defaultRule: defaultRule, rules: appRules, options: appOptions)
+    }
+
+    /// Replaces preferences and per-app rules. Leaves enabled or paused and launch at login alone.
+    func apply(_ archive: SettingsArchive) {
+        bareKeys = archive.plainKeys
+        showMenuBarIcon = archive.showMenuBarIcon
+        showInDock = archive.showInDock
+        defaultRule = archive.rule
+        appRules = archive.rules
+        appOptions = archive.options
+    }
+
     func setLaunchAtLogin(_ on: Bool) {
         loginError = LoginItem.set(on)
         launchAtLogin = LoginItem.isEnabled
