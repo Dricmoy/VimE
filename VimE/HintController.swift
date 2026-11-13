@@ -10,13 +10,30 @@ final class HintController {
                 prepareFrontmostApp()
             } else {
                 end()
+                leaveInsert()
                 Accessibility.releaseTrees()
             }
+            refreshIndicator()
         }
     }
 
     /// Plain keys (f, hjkl, gg, G, d, u, ?) act outside text fields; ⌥F works regardless.
-    var plainKeysEnabled = true
+    var plainKeysEnabled = true {
+        didSet { if plainKeysEnabled != oldValue { prepareFrontmostApp() } }
+    }
+
+    var badgeStyle: BadgeStyle = .auto
+    var badgeSize: BadgeSize = .medium
+
+    var indicatorPosition: IndicatorPosition {
+        get { indicator.position }
+        set { indicator.position = newValue; refreshIndicator() }
+    }
+
+    /// Show the indicator while typing in a text field too, not only in the `i` Insert mode.
+    var indicatorWhileTyping = false {
+        didSet { if indicatorWhileTyping != oldValue { prepareFrontmostApp() } }
+    }
 
     /// Per-app overrides of the above.
     var rules = AppRules() {
@@ -36,6 +53,10 @@ final class HintController {
     private var router = KeyRouter()
     private let scroller = Scroller()
     private let help = HelpPanel()
+    private let indicator = ModeIndicator()
+    private let focusTracker = FocusTracker()
+    /// What the focus tracker last saw in the frontmost app.
+    private var typing = false
     /// Recent "user is typing" answers, so fast typing doesn't pay an Accessibility round trip per key.
     /// Only `true` is cached: a stale `true` at worst types a letter, a stale `false` would eat one.
     private var editableUntil: TimeInterval = 0
@@ -68,6 +89,8 @@ final class HintController {
             self.scroller.invalidate()
             self.help.hide()
             if self.mode == .hint { self.end() }
+            // Insert mode belongs to the app it was turned on in.
+            self.leaveInsert()
             self.prepareFrontmostApp()
         }
         // Clicks move focus without a key press, and any click or scroll means the hints are stale.
@@ -81,8 +104,14 @@ final class HintController {
                       ProcessInfo.processInfo.systemUptime - self.hintStartedAt > 0.3 else { return }
             } else {
                 self.forgetFocus()
+                // A click may have moved focus into or out of a text field.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { self.focusTracker.check() }
             }
             if self.mode == .hint { self.end() }
+        }
+        focusTracker.onChange = { [weak self] editable in
+            self?.typing = editable
+            self?.refreshIndicator()
         }
         prepareFrontmostApp()
     }
@@ -91,11 +120,36 @@ final class HintController {
     /// or turns the browser switch back off if VimE is paused or the app is set Off.
     private func prepareFrontmostApp() {
         guard let app = NSWorkspace.shared.frontmostApplication, app.processIdentifier != getpid() else { return }
-        if isEnabled && rules.rule(for: app.bundleIdentifier) != .off {
+        let rule = rules.rule(for: app.bundleIdentifier)
+        if isEnabled && rule != .off {
             Accessibility.enableTree(for: app)
         } else {
             Accessibility.releaseTrees(pid: app.processIdentifier)
         }
+        // Typing only changes what plain keys do, so follow focus only where they work.
+        typing = false
+        let follow = isEnabled && indicatorWhileTyping && indicator.position != .hidden && plainKeysEnabled
+            && rule == .normal
+        focusTracker.track(follow ? app.processIdentifier : nil)
+        refreshIndicator()
+    }
+
+    private func refreshIndicator() {
+        if !isEnabled {
+            indicator.show(.hidden)
+        } else if mode == .insert {
+            indicator.show(.insert)
+        } else if typing && indicatorWhileTyping {
+            indicator.show(.typing)
+        } else {
+            indicator.show(.hidden)
+        }
+    }
+
+    private func leaveInsert() {
+        guard mode == .insert else { return }
+        mode = .passthrough
+        refreshIndicator()
     }
 
     private func forgetFocus() {
@@ -114,6 +168,13 @@ final class HintController {
         if help.isVisible {
             // Any key just closes the cheat sheet.
             help.hide()
+            return true
+        }
+        // Insert mode passes everything but Esc, without asking anything of the app.
+        if mode == .insert {
+            guard router.route(input, mode: .insert, plainKeysAllowed: false, focusIsEditable: { true }) == .exitInsert
+            else { return false }
+            leaveInsert()
             return true
         }
         if mode == .passthrough && !KeyRouter.mightAct(input) {
@@ -152,11 +213,21 @@ final class HintController {
         case .exitHintAndPass:
             end()
             return false
+        case .enterInsert:
+            end()
+            mode = .insert
+            refreshIndicator()
+            return true
+        case .exitInsert:
+            leaveInsert()
+            return true
         case .leaveTextField:
             guard let front else { return false }
             forgetFocus()
             // Swallowed only if focus actually moved; otherwise the app gets its Esc.
-            return Accessibility.leaveTextField(pid: front.processIdentifier)
+            let left = Accessibility.leaveTextField(pid: front.processIdentifier)
+            if left { focusTracker.check() }
+            return left
         case .backspace:
             if session == nil {
                 _ = pending.popLast()
@@ -225,7 +296,8 @@ final class HintController {
                 let labels = Labels.make(count: found.count)
                 self.targets = found
                 self.session = HintSession(labels: labels)
-                self.overlay.show(labels: labels, frames: found.map(\.frame))
+                self.overlay.show(labels: labels, frames: found.map(\.frame), style: self.badgeStyle,
+                                  size: self.badgeSize)
                 self.onHintsShown?()
                 let buffered = self.pending
                 self.pending = []
@@ -258,7 +330,7 @@ final class HintController {
     }
 
     private func end() {
-        mode = .passthrough
+        if mode == .hint { mode = .passthrough }
         generation += 1
         walkToken?.cancel()
         walkToken = nil

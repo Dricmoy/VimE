@@ -26,6 +26,9 @@ public struct KeyInput: Equatable {
 public enum Mode: Equatable {
     case passthrough
     case hint
+    /// Entered with `i`: every key goes to the app until Esc, for apps where VimE can't tell you're
+    /// typing (canvas apps, remote desktops, some games).
+    case insert
 }
 
 /// How a hint clicks its element, picked by the modifier held on the label's last letter.
@@ -46,6 +49,8 @@ public enum KeyAction: Equatable {
     case exitHintAndPass
     /// Esc in a text field: move focus out of it, so plain keys work again.
     case leaveTextField
+    case enterInsert
+    case exitInsert
     case backspace
     case type(Character, Click)
     case scroll(ScrollCommand, isRepeat: Bool)
@@ -69,7 +74,7 @@ public struct KeyRouter {
     public static let vKeyCode: UInt16 = 9
 
     /// Plain keys VimE acts on outside text fields.
-    public static let plainKeys: Set<String> = ["f", "h", "j", "k", "l", "d", "u", "g", "G", "?"]
+    public static let plainKeys: Set<String> = ["f", "h", "j", "k", "l", "d", "u", "g", "G", "?", "i"]
 
     public private(set) var pendingG = false
     private var pendingGAt: TimeInterval = 0
@@ -115,6 +120,10 @@ public struct KeyRouter {
     public mutating func route(_ k: KeyInput, mode: Mode, plainKeysAllowed: Bool, escLeavesTextField: Bool = false,
                                now: TimeInterval = 0, focusIsEditable: () -> Bool) -> KeyAction {
         switch mode {
+        case .insert:
+            pendingG = false
+            let plainEsc = k.keyCode == Self.escapeKeyCode && !k.option && !k.command && !k.control && !k.shift
+            return plainEsc && !k.isRepeat ? .exitInsert : .pass
         case .passthrough:
             if k.keyCode == Self.escapeKeyCode && !k.option && !k.command && !k.control && !k.shift {
                 pendingG = false
@@ -161,6 +170,7 @@ public struct KeyRouter {
         case "u": return .scroll(.halfPageUp, isRepeat: k.isRepeat)
         case "G": return .scroll(.bottom, isRepeat: false)
         case "?": return k.isRepeat ? .swallow : .showHelp
+        case "i": return k.isRepeat ? .swallow : .enterInsert
         case "g":
             if wasPendingG { return .scroll(.top, isRepeat: false) }
             pendingG = true

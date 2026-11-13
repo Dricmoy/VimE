@@ -253,16 +253,29 @@ private struct StepDots: View {
     }
 }
 
-private struct HintBadge: View {
+/// A badge drawn with the same colours as the real hints.
+struct HintBadge: View {
     let text: String
+    var style: BadgeStyle = .auto
+    var size: BadgeSize = .large
+    var typed = ""
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        Text(text)
-            .font(.system(size: 13, weight: .bold, design: .monospaced))
-            .foregroundStyle(.black)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(RoundedRectangle(cornerRadius: 3).fill(Color(red: 1, green: 0.85, blue: 0.2)))
+        let theme = BadgeTheme.resolve(style)
+        let font = Font.system(size: size.fontSize, weight: .bold, design: .monospaced)
+        let radius = (size.fontSize * 0.42).rounded()
+        (Text(typed).foregroundColor(Color(nsColor: theme.text).opacity(0.4))
+            + Text(String(text.dropFirst(typed.count))).foregroundColor(Color(nsColor: theme.text)))
+            .font(font)
+            .kerning(0.6)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1.5)
+            .background(RoundedRectangle(cornerRadius: radius).fill(Color(nsColor: theme.fill)))
+            .overlay(RoundedRectangle(cornerRadius: radius).stroke(Color(nsColor: theme.border), lineWidth: 1))
+            .shadow(color: Color(nsColor: theme.shadow), radius: 1.5, y: 1)
+            // Auto follows the system appearance; reading it here redraws the badge when it changes.
+            .id(scheme)
     }
 }
 

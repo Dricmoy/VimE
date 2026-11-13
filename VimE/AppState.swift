@@ -25,10 +25,10 @@ final class AppState: ObservableObject {
         }
     }
     /// Per-app overrides (on, ⌥F only, off).
-    @Published var appRules = AppRules(plist: UserDefaults.standard.dictionary(forKey: "appRules") as? [String: String] ?? [:],
-                                       fallback: AppState.loadDefaultRule()) {
+    @Published var appRules = AppState.loadRules() {
         didSet {
             UserDefaults.standard.set(appRules.plist, forKey: "appRules")
+            UserDefaults.standard.set(appRules.detectedGames.sorted(), forKey: "detectedGames")
             onChange()
         }
     }
@@ -41,6 +41,19 @@ final class AppState: ObservableObject {
             UserDefaults.standard.set(appOptions.plist, forKey: "appOptions")
             onChange()
         }
+    }
+    @Published var badgeStyle = AppState.loadEnum("badgeStyle", default: BadgeStyle.auto) {
+        didSet { saveEnum("badgeStyle", badgeStyle) }
+    }
+    @Published var badgeSize = AppState.loadEnum("badgeSize", default: BadgeSize.medium) {
+        didSet { saveEnum("badgeSize", badgeSize) }
+    }
+    @Published var indicatorPosition = AppState.loadEnum("indicatorPosition", default: IndicatorPosition.bottomRight) {
+        didSet { saveEnum("indicatorPosition", indicatorPosition) }
+    }
+    /// Also show the indicator while you type in a text field, not just in the `i` Insert mode.
+    @Published var indicatorWhileTyping = AppState.load("indicatorWhileTyping", default: false) {
+        didSet { save("indicatorWhileTyping", indicatorWhileTyping) }
     }
     @Published var tapRunning = false {
         didSet { onChange() }
@@ -55,6 +68,22 @@ final class AppState: ObservableObject {
         UserDefaults.standard.string(forKey: "defaultAppRule").flatMap(AppRule.init(rawValue:)) ?? AppRules.standardFallback
     }
 
+    private static func loadRules() -> AppRules {
+        var rules = AppRules(plist: UserDefaults.standard.dictionary(forKey: "appRules") as? [String: String] ?? [:],
+                             fallback: loadDefaultRule())
+        rules.detectedGames = Set(UserDefaults.standard.stringArray(forKey: "detectedGames") ?? [])
+        return rules
+    }
+
+    private static func loadEnum<E: RawRepresentable>(_ key: String, default value: E) -> E where E.RawValue == String {
+        UserDefaults.standard.string(forKey: key).flatMap(E.init(rawValue:)) ?? value
+    }
+
+    private func saveEnum<E: RawRepresentable>(_ key: String, _ value: E) where E.RawValue == String {
+        UserDefaults.standard.set(value.rawValue, forKey: key)
+        onChange()
+    }
+
     private static func load(_ key: String, default value: Bool) -> Bool {
         UserDefaults.standard.object(forKey: key) as? Bool ?? value
     }
@@ -67,7 +96,9 @@ final class AppState: ObservableObject {
     /// Preferences and per-app rules, for another Mac.
     var archive: SettingsArchive {
         SettingsArchive(plainKeys: bareKeys, showMenuBarIcon: showMenuBarIcon, showInDock: showInDock,
-                        defaultRule: defaultRule, rules: appRules, options: appOptions)
+                        defaultRule: defaultRule, rules: appRules, options: appOptions, badgeStyle: badgeStyle,
+                        badgeSize: badgeSize, indicatorPosition: indicatorPosition,
+                        indicatorWhileTyping: indicatorWhileTyping)
     }
 
     /// Replaces preferences and per-app rules. Leaves enabled or paused and launch at login alone.
@@ -76,8 +107,14 @@ final class AppState: ObservableObject {
         showMenuBarIcon = archive.showMenuBarIcon
         showInDock = archive.showInDock
         defaultRule = archive.rule
-        appRules = archive.rules
+        var rules = archive.rules
+        rules.detectedGames = appRules.detectedGames  // Detected on this Mac, not part of the export.
+        appRules = rules
         appOptions = archive.options
+        if let style = archive.style { badgeStyle = style }
+        if let size = archive.size { badgeSize = size }
+        if let indicator = archive.indicator { indicatorPosition = indicator }
+        if let typing = archive.indicatorWhileTyping { indicatorWhileTyping = typing }
     }
 
     func setLaunchAtLogin(_ on: Bool) {

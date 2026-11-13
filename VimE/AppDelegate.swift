@@ -64,6 +64,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         controller.plainKeysEnabled = state.bareKeys
         controller.rules = state.appRules
         controller.options = state.appOptions
+        controller.badgeStyle = state.badgeStyle
+        controller.badgeSize = state.badgeSize
+        controller.indicatorWhileTyping = state.indicatorWhileTyping
+        controller.indicatorPosition = state.indicatorPosition
         statusItem.isVisible = state.showMenuBarIcon
         statusItem.button?.appearsDisabled = !state.enabled
 
@@ -162,14 +166,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func trackCurrentApp() {
         let mine = Bundle.main.bundleIdentifier
-        if let front = NSWorkspace.shared.frontmostApplication, front.bundleIdentifier != mine { currentApp = front }
+        if let front = NSWorkspace.shared.frontmostApplication, front.bundleIdentifier != mine {
+            currentApp = front
+            noticeGame(front)
+        }
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
         ) { [weak self] note in
             guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
                   app.bundleIdentifier != mine else { return }
             self?.currentApp = app
+            self?.noticeGame(app)
         }
+    }
+
+    /// The first time a game comes to the front, VimE turns itself Off there and says so once.
+    private func noticeGame(_ app: NSRunningApplication) {
+        guard let id = app.bundleIdentifier, !state.appRules.detectedGames.contains(id),
+              GameDetector.isGame(app) else { return }
+        state.appRules.detectedGames.insert(id)
+        guard state.enabled, state.appRules.isOffAsGame(id) else { return }
+        toast.show("VimE is Off in \(app.localizedName ?? id)", detail: "It looks like a game. ⌃⌥⌘⇧V to change.",
+                   seconds: 2.5)
     }
 
     /// Built each time it opens, so the per-app switch names the app you're in.
@@ -182,7 +200,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else if !state.enabled {
             status = "Paused"
         } else if rule == .off {
-            status = "Off in this app"
+            let game = currentApp?.bundleIdentifier.map(state.appRules.isOffAsGame) ?? false
+            status = game ? "Off in this app (looks like a game)" : "Off in this app"
         } else {
             status = state.bareKeys && rule == .normal ? "Active — f for hints, ? for keys" : "Active — ⌥F for hints"
         }

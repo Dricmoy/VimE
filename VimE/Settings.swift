@@ -8,6 +8,16 @@ struct SettingsView: View {
     var runSetup: () -> Void
 
     var body: some View {
+        TabView {
+            general.tabItem { Label("General", systemImage: "gearshape") }
+            apps.tabItem { Label("Apps", systemImage: "square.grid.2x2") }
+            AppearanceTab(state: state).tabItem { Label("Appearance", systemImage: "paintpalette") }
+            keys.tabItem { Label("Keys", systemImage: "keyboard") }
+        }
+        .frame(width: 520, height: 600)
+    }
+
+    private var general: some View {
         Form {
             Section {
                 Toggle("Enable VimE", isOn: $state.enabled).toggleStyle(.switch)
@@ -19,7 +29,7 @@ struct SettingsView: View {
                                      set: { state.appOptions.defaults[.escLeavesTextField] = $0 })) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Esc leaves text fields")
-                        Text("In apps that are On: Esc in a text field on a web page or in an Electron app moves you out of it, so plain keys work again. Change it per app below.")
+                        Text("In apps that are On: Esc in a text field on a web page or in an Electron app moves you out of it, so plain keys work again. Change it per app in Apps.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
@@ -36,6 +46,23 @@ struct SettingsView: View {
             }
 
             Section {
+                HStack {
+                    Button("Export…", action: exportSettings)
+                    Button("Import…", action: importSettings)
+                }
+            } header: {
+                Text("Other Macs")
+            } footer: {
+                Text("Copies your preferences, app rules and appearance to a file you can import on another Mac.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private var apps: some View {
+        Form {
+            Section {
                 ForEach(listedApps, id: \.self) { id in
                     AppRuleRow(bundleID: id, state: state)
                 }
@@ -44,23 +71,16 @@ struct SettingsView: View {
                 Text("Apps")
             } footer: {
                 Text("⌥F only: plain keys go to the app, ⌥F still shows hints. Off: VimE ignores the app. "
-                     + "Apps not listed follow \"Apps you haven't set\" above. "
+                     + "Apps not listed follow \"Apps you haven't set\" in General. Games VimE recognises start Off. "
                      + "The menu bar icon or ⌃⌥⌘⇧V switches the app you're in.")
                     .foregroundStyle(.secondary)
             }
+        }
+        .formStyle(.grouped)
+    }
 
-            Section {
-                HStack {
-                    Button("Export…", action: exportSettings)
-                    Button("Import…", action: importSettings)
-                }
-            } header: {
-                Text("Other Macs")
-            } footer: {
-                Text("Copies your preferences and app rules to a file you can import on another Mac.")
-                    .foregroundStyle(.secondary)
-            }
-
+    private var keys: some View {
+        Form {
             Section("Shortcuts") {
                 ShortcutRows(shortcuts: Shortcuts.anywhere(plainKeys: state.bareKeys))
             }
@@ -70,7 +90,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 500, height: 720)
     }
 
     /// Apps with a rule or an option of their own.
@@ -139,6 +158,108 @@ struct SettingsView: View {
     }
 }
 
+private struct AppearanceTab: View {
+    @ObservedObject var state: AppState
+
+    var body: some View {
+        Form {
+            Section("Hints") {
+                Picker("Style", selection: $state.badgeStyle) {
+                    ForEach(BadgeStyle.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                Picker("Size", selection: $state.badgeSize) {
+                    ForEach(BadgeSize.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                BadgePreview(style: state.badgeStyle, size: state.badgeSize)
+            }
+
+            Section {
+                Picker("Position", selection: $state.indicatorPosition) {
+                    ForEach(IndicatorPosition.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                Toggle(isOn: $state.indicatorWhileTyping) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Also while typing")
+                        Text("Show it whenever you're in a text field in an app that's On, so you know plain keys will type.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.switch)
+                .disabled(state.indicatorPosition == .hidden)
+            } header: {
+                Text("Mode indicator")
+            } footer: {
+                Text("Shows -- INSERT -- after you press i, when every key goes to the app until Esc.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+/// Sample badges over a light and a dark window, drawn like the real ones.
+struct BadgePreview: View {
+    let style: BadgeStyle
+    let size: BadgeSize
+
+    var body: some View {
+        HStack(spacing: 10) {
+            sample(background: .white, text: .black)
+            sample(background: Color(white: 0.13), text: .white)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func sample(background: Color, text: Color) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(["Inbox", "Compose", "Settings"].enumerated()), id: \.offset) { i, word in
+                ZStack(alignment: .topLeading) {
+                    Text(word).font(.system(size: 13)).foregroundStyle(text).padding(.leading, 14).padding(.top, 6)
+                    HintBadge(text: ["A", "SD", "F"][i], style: style, size: size, typed: i == 1 ? "S" : "")
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(background, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.3)))
+    }
+}
+
+extension BadgeStyle {
+    var title: String {
+        switch self {
+        case .auto: return "Auto (opposite of Light/Dark mode)"
+        case .dark: return "Dark"
+        case .light: return "Light"
+        case .classic: return "Classic yellow"
+        }
+    }
+}
+
+extension BadgeSize {
+    var title: String {
+        switch self {
+        case .small: return "Small"
+        case .medium: return "Medium"
+        case .large: return "Large"
+        }
+    }
+}
+
+extension IndicatorPosition {
+    var title: String {
+        switch self {
+        case .hidden: return "Hidden"
+        case .topLeft: return "Top left"
+        case .topRight: return "Top right"
+        case .bottomLeft: return "Bottom left"
+        case .bottomRight: return "Bottom right"
+        }
+    }
+}
+
 private struct AppRuleRow: View {
     let bundleID: String
     @ObservedObject var state: AppState
@@ -146,7 +267,12 @@ private struct AppRuleRow: View {
     var body: some View {
         HStack {
             Image(nsImage: AppInfo.icon(bundleID)).resizable().frame(width: 20, height: 20)
-            Text(AppInfo.name(bundleID))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(AppInfo.name(bundleID))
+                if state.appRules.isOffAsGame(bundleID) {
+                    Text("Looks like a game").font(.caption).foregroundStyle(.secondary)
+                }
+            }
             Spacer()
             Picker("", selection: Binding(get: { state.appRules.rule(for: bundleID) },
                                           set: { state.appRules.set($0, for: bundleID) })) {

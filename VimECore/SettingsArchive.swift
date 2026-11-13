@@ -22,9 +22,15 @@ public struct SettingsArchive: Codable, Equatable {
     public var appRules: [String: String]
     public var appOptionDefaults: [String: Bool]
     public var appOptions: [String: [String: Bool]]
+    // Appearance, added later in version 1: missing from older exports, so optional.
+    public var badgeStyle: String?
+    public var badgeSize: String?
+    public var indicatorPosition: String?
+    public var indicatorWhileTyping: Bool?
 
     public init(plainKeys: Bool, showMenuBarIcon: Bool, showInDock: Bool, defaultRule: AppRule,
-                rules: AppRules, options: AppOptions) {
+                rules: AppRules, options: AppOptions, badgeStyle: BadgeStyle = .auto, badgeSize: BadgeSize = .medium,
+                indicatorPosition: IndicatorPosition = .bottomRight, indicatorWhileTyping: Bool = false) {
         self.plainKeys = plainKeys
         self.showMenuBarIcon = showMenuBarIcon
         self.showInDock = showInDock
@@ -32,12 +38,19 @@ public struct SettingsArchive: Codable, Equatable {
         self.appRules = rules.plist
         self.appOptionDefaults = options.defaultsPlist
         self.appOptions = options.plist
+        self.badgeStyle = badgeStyle.rawValue
+        self.badgeSize = badgeSize.rawValue
+        self.indicatorPosition = indicatorPosition.rawValue
+        self.indicatorWhileTyping = indicatorWhileTyping
     }
 
     /// Unknown rule or option names (from a newer version) are dropped rather than failing the import.
     public var rule: AppRule { AppRule(rawValue: defaultRule) ?? AppRules.standardFallback }
     public var rules: AppRules { AppRules(plist: appRules, fallback: rule) }
     public var options: AppOptions { AppOptions(defaultsPlist: appOptionDefaults, plist: appOptions) }
+    public var style: BadgeStyle? { badgeStyle.flatMap(BadgeStyle.init(rawValue:)) }
+    public var size: BadgeSize? { badgeSize.flatMap(BadgeSize.init(rawValue:)) }
+    public var indicator: IndicatorPosition? { indicatorPosition.flatMap(IndicatorPosition.init(rawValue:)) }
 
     public func encoded() throws -> Data {
         let encoder = JSONEncoder()

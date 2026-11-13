@@ -42,7 +42,33 @@ enum HintDump {
         exit(0)
     }
 
+    /// `--render-badges <window.png> <dump.txt> <x> <y> <style> <size> <out.png> [typed]`: draws the real
+    /// badges for a `--dump-hints` file over a screenshot of that window, whose top-left is at x,y.
+    static func runRenderIfRequested() {
+        let args = CommandLine.arguments
+        guard let i = args.firstIndex(of: "--render-badges"), args.count > i + 7,
+              let shot = NSImage(contentsOfFile: args[i + 1]),
+              let dump = try? String(contentsOfFile: args[i + 2], encoding: .utf8),
+              let x = Double(args[i + 3]), let y = Double(args[i + 4]),
+              let style = BadgeStyle(rawValue: args[i + 5]), let size = BadgeSize(rawValue: args[i + 6]) else { return }
+        // The screenshot's pixels are at 2x; its point size is what the frames use.
+        if let rep = shot.representations.first { shot.size = NSSize(width: rep.pixelsWide / 2, height: rep.pixelsHigh / 2) }
+        var frames: [CGRect] = []
+        for line in dump.split(separator: "\n") where line.hasPrefix("KEEP") {
+            guard let open = line.lastIndex(of: "(") else { continue }
+            let n = line[open...].split(whereSeparator: { !"0123456789-".contains($0) }).compactMap { Double($0) }
+            guard n.count == 4 else { continue }
+            frames.append(CGRect(x: n[0] - x, y: n[1] - y, width: n[2], height: n[3]))
+        }
+        let typed = args.count > i + 8 ? args[i + 8] : ""
+        let rep = Overlay.render(over: shot, elements: frames, labels: Labels.make(count: frames.count), style: style,
+                                 size: size, typed: typed)
+        try? rep?.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 7]))
+        exit(0)
+    }
+
     static func runIfRequested() {
+        runRenderIfRequested()
         runPointerIfRequested()
         runFocusIfRequested()
         let args = CommandLine.arguments

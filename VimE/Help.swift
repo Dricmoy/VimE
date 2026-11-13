@@ -20,6 +20,7 @@ enum Shortcuts {
                 Shortcut(keys: "gg  G", action: "Top / bottom"),
                 Shortcut(keys: "?", action: "Show this list"),
                 Shortcut(keys: "Esc", action: "Leave a text field (web and Electron apps)"),
+                Shortcut(keys: "i", action: "Insert mode: every key goes to the app until Esc"),
             ]
         }
         list += [

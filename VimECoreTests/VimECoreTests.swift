@@ -600,3 +600,139 @@ final class SettingsArchiveTests: XCTestCase {
         XCTAssertNil(read.rules.overrides["com.example.New"])
     }
 }
+
+final class BadgeLayoutTests: XCTestCase {
+    private let screen = CGRect(x: 0, y: 0, width: 1000, height: 800)
+
+    func testSeparateBadgesStayPut() {
+        let badges = [CGRect(x: 100, y: 100, width: 20, height: 16), CGRect(x: 300, y: 100, width: 20, height: 16)]
+        XCTAssertEqual(BadgeLayout.place(badges, in: screen), badges)
+    }
+
+    func testOverlappingBadgesMoveRightInReadingOrder() {
+        let a = CGRect(x: 100, y: 100, width: 20, height: 16)
+        let b = CGRect(x: 110, y: 104, width: 20, height: 16)
+        let placed = BadgeLayout.place([b, a], in: screen)
+        XCTAssertEqual(placed[1], a, "the earlier one in reading order keeps its spot")
+        XCTAssertEqual(placed[0].minX, a.maxX + 1)
+        XCTAssertEqual(placed[0].minY, b.minY)
+        XCTAssertFalse(placed[0].intersects(placed[1]))
+    }
+
+    func testARowOfCrowdedBadgesNeverOverlaps() {
+        let badges = (0..<10).map { CGRect(x: 100 + CGFloat($0) * 8, y: 50, width: 20, height: 16) }
+        let placed = BadgeLayout.place(badges, in: screen)
+        for i in placed.indices { for j in placed.indices where j > i {
+            XCTAssertFalse(placed[i].intersects(placed[j]), "\(i) and \(j)")
+        } }
+    }
+
+    func testNoRoomToTheRightMovesBelow() {
+        let a = CGRect(x: 975, y: 100, width: 20, height: 16)
+        let b = CGRect(x: 978, y: 102, width: 20, height: 16)
+        let placed = BadgeLayout.place([a, b], in: screen)
+        XCTAssertEqual(placed[1].minY, a.maxY + 1)
+        XCTAssertLessThanOrEqual(placed[1].maxX, screen.maxX)
+    }
+
+    func testBadgesStayOnScreen() {
+        let placed = BadgeLayout.place([CGRect(x: -10, y: -5, width: 20, height: 16)], in: screen)
+        XCTAssertEqual(placed[0].origin, .zero)
+    }
+
+    func testAnchorSitsUpAndLeftOfTheElement() {
+        let badge = BadgeLayout.anchor(element: CGRect(x: 50, y: 60, width: 100, height: 20),
+                                       size: CGSize(width: 20, height: 16))
+        XCTAssertEqual(badge, CGRect(x: 50 - BadgeLayout.nudge, y: 60 - BadgeLayout.nudge, width: 20, height: 16))
+    }
+}
+
+final class GameTests: XCTestCase {
+    private func isGame(id: String? = "com.example.App", category: String? = nil, gameMode: Bool = false,
+                        path: String = "/Applications/App.app", frameworks: [String] = []) -> Bool {
+        Policy.isGame(bundleID: id, category: category, supportsGameMode: gameMode, path: path, frameworks: frameworks)
+    }
+
+    func testSignals() {
+        XCTAssertFalse(isGame())
+        XCTAssertFalse(isGame(category: "public.app-category.productivity"))
+        XCTAssertTrue(isGame(category: "public.app-category.games"))
+        XCTAssertTrue(isGame(category: "public.app-category.puzzle-games"))
+        XCTAssertTrue(isGame(gameMode: true))
+        XCTAssertTrue(isGame(path: "/Users/me/Library/Application Support/Steam/steamapps/common/Game/Game.app"))
+        XCTAssertTrue(isGame(frameworks: ["UnityPlayer.dylib"]))
+        XCTAssertFalse(isGame(frameworks: ["Sparkle.framework"]))
+    }
+
+    func testLaunchersAreNotGames() {
+        XCTAssertFalse(isGame(id: "com.valvesoftware.steam", category: "public.app-category.games"))
+    }
+
+    func testDetectedGamesAreOffUnlessYouSetThem() {
+        var rules = AppRules(fallback: .normal)
+        rules.detectedGames = ["com.example.Game"]
+        XCTAssertEqual(rules.rule(for: "com.example.Game"), .off)
+        XCTAssertTrue(rules.isOffAsGame("com.example.Game"))
+        XCTAssertTrue(rules.listed.contains("com.example.Game"))
+        rules.set(.normal, for: "com.example.Game")
+        XCTAssertEqual(rules.rule(for: "com.example.Game"), .normal, "your choice wins")
+        XCTAssertFalse(rules.isOffAsGame("com.example.Game"))
+        rules.reset("com.example.Game")
+        XCTAssertEqual(rules.rule(for: "com.example.Game"), .off)
+    }
+
+    func testVirtualMachinesAndGameHostsAreOff() {
+        XCTAssertEqual(AppRules(fallback: .normal).rule(for: "com.parallels.desktop.console"), .off)
+        XCTAssertEqual(AppRules(fallback: .normal).rule(for: "com.codeweavers.CrossOver"), .off)
+    }
+}
+
+final class InsertModeTests: XCTestCase {
+    private let esc = KeyInput(keyCode: KeyRouter.escapeKeyCode, characters: "\u{1b}")
+
+    func testIEntersInsertOutsideTextFields() {
+        var r = KeyRouter()
+        let i = KeyInput(keyCode: 34, characters: "i")
+        XCTAssertTrue(KeyRouter.mightAct(i))
+        XCTAssertEqual(r.route(i, mode: .passthrough, plainKeysAllowed: true, focusIsEditable: { false }), .enterInsert)
+        XCTAssertEqual(r.route(i, mode: .passthrough, plainKeysAllowed: true, focusIsEditable: { true }), .pass)
+        XCTAssertEqual(r.route(i, mode: .passthrough, plainKeysAllowed: false, focusIsEditable: { false }), .pass)
+    }
+
+    func testInsertPassesEverythingButEsc() {
+        var r = KeyRouter()
+        for k in [KeyInput(keyCode: 38, characters: "j"), KeyInput(keyCode: 3, characters: "f", option: true),
+                  KeyInput(keyCode: 3, characters: "f"),
+                  KeyInput(keyCode: KeyRouter.escapeKeyCode, characters: "\u{1b}", shift: true)] {
+            XCTAssertEqual(r.route(k, mode: .insert, plainKeysAllowed: true, focusIsEditable: { false }), .pass)
+        }
+        XCTAssertEqual(r.route(esc, mode: .insert, plainKeysAllowed: true, focusIsEditable: { false }), .exitInsert)
+        var held = esc
+        held.isRepeat = true
+        XCTAssertEqual(r.route(held, mode: .insert, plainKeysAllowed: true, focusIsEditable: { false }), .pass)
+    }
+}
+
+final class SettingsArchiveAppearanceTests: XCTestCase {
+    func testAppearanceRoundTrips() throws {
+        let archive = SettingsArchive(plainKeys: true, showMenuBarIcon: true, showInDock: false, defaultRule: .chordOnly,
+                                      rules: AppRules(), options: AppOptions(), badgeStyle: .classic, badgeSize: .large,
+                                      indicatorPosition: .topLeft, indicatorWhileTyping: true)
+        let read = try SettingsArchive.decode(archive.encoded())
+        XCTAssertEqual(read.style, .classic)
+        XCTAssertEqual(read.size, .large)
+        XCTAssertEqual(read.indicator, .topLeft)
+        XCTAssertEqual(read.indicatorWhileTyping, true)
+    }
+
+    func testOlderExportsWithoutAppearanceStillImport() throws {
+        let json = """
+        {"format": "VimE settings", "version": 1, "plainKeys": true, "showMenuBarIcon": true, "showInDock": false,
+         "defaultRule": "normal", "appRules": {}, "appOptionDefaults": {}, "appOptions": {}}
+        """
+        let read = try SettingsArchive.decode(Data(json.utf8))
+        XCTAssertNil(read.style)
+        XCTAssertNil(read.indicator)
+        XCTAssertEqual(read.rule, .normal)
+    }
+}

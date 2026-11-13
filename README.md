@@ -28,6 +28,7 @@ tested yet; see [Status](#status).
 | `gg` `G` | Top / bottom |
 | `?` | Cheat sheet (where plain keys are on) |
 | `Esc` | Leave the text field you're typing in (web pages and Electron apps, where plain keys are on) |
+| `i` | Insert mode: every key goes to the app until `Esc`, for apps where VimE can't tell you're typing |
 | `⌃⌥⌘V` | Turn VimE on or off everywhere |
 | `⌃⌥⌘⇧V` | Switch the app you're in: On → ⌥F only → Off |
 
@@ -50,7 +51,12 @@ Plain keys are opt-in: apps you haven't set get **⌥F only**, so games, editors
 its own single-key shortcuts keep working. Turn an app On from the menu bar icon, with `⌃⌥⌘⇧V`, or in
 Settings → Apps. "Apps you haven't set" in Settings changes that default. Terminals (Terminal, iTerm2,
 Ghostty, kitty, Alacritty, Warp) are Off out of the box, since `⌥F` is "forward word" in shells; Vim
-GUIs (MacVim, VimR) are ⌥F only.
+GUIs (MacVim, VimR) are ⌥F only. Virtual machines, remote desktops and game hosts (Parallels, VMware
+Fusion, UTM, Windows App, CrossOver, Whisky, GeForce NOW) are Off.
+
+Games start Off too. VimE recognises them by their App Store category, Game Mode support, a Steam
+install folder, or a bundled Unity/Mono engine, and says so once with a short message the first time
+one comes to the front. Your own rule for a game always wins.
 
 Each app can also override per-app options from the menu bar icon or the ⋯ button in Settings → Apps.
 For now there's one: **Esc leaves text fields** (on by default). In an app that's On, Esc in a text
@@ -60,6 +66,17 @@ themselves. Native Mac apps always keep their own Esc.
 
 <img src="docs/settings.png" alt="VimE Settings" width="420">
 
+## Appearance
+
+Settings → Appearance:
+
+- **Hint style:** Auto (dark badges in Light mode, light badges in Dark mode), Dark, Light, or Classic
+  yellow. Badges have rounded corners, a hairline edge and a soft shadow; typed letters fade back.
+- **Hint size:** Small, Medium, Large.
+- Badges sit just up and left of what they label and are nudged apart so none covers another.
+- **Mode indicator:** `-- INSERT --` in a corner of your choice (or hidden) while the `i` Insert mode
+  is on, and optionally whenever you're in a text field of an app that's On.
+
 ## Status
 
 Builds for macOS 14 and later; only tested on macOS 26 (Apple silicon).
@@ -68,7 +85,7 @@ Works, tested by hand:
 
 - Hints in native apps (Finder, System Settings…) and Chrome, including the web page.
 - Scrolling, cheat sheet, per-app rules, menu bar switch, setup flow.
-- 48 unit tests for the core logic (`make test`).
+- 83 unit tests for the core logic (`make test`).
 
 Built but not yet tried by hand: the `⌃⌥⌘V` / `⌃⌥⌘⇧V` shortcuts and their on-screen message, and the
 opt-in default.
@@ -79,12 +96,11 @@ Known issues:
 
 - In Chrome, links hidden with `opacity: 0`, `clip-path`, `transform: scale(0)`, or covered by another
   element still get hints. Chrome reports them to Accessibility clients exactly like visible links.
-- No Developer ID signing or notarization, so other Macs need right-click → Open the first time.
+- No Developer ID signing or notarization, so a downloaded .dmg needs Privacy & Security → Open Anyway.
 - `⌥F` and `⌃⌥⌘V` match the key in the US-layout position of F and V, so on other layouts they may
   sit on a different letter. Plain keys (`f`, `hjkl`…) follow the typed character.
 
-Ideas: a mode indicator (Normal / Insert / Hint) with a choice of where it sits, a sticky Insert mode
-on `i`, detecting games and turning VimE off in them.
+Built but not yet tried by hand: game detection against a real game, the mode indicator while typing.
 
 ## Install
 
@@ -172,6 +188,8 @@ Notes:
 
   Add `--attrs` for every Accessibility attribute of each target. `--dump-focus <pid> <file> <seconds>`
   samples what the app reports as focused, and `--dump-pointer <file>` which app is under the pointer.
+  `--render-badges <window.png> <dump.txt> <x> <y> <style> <size> <out.png>` draws the real badges for a
+  `--dump-hints` file over a window screenshot, to check the look without hints on screen.
   Debug builds use their own bundle ID (`com.dric.VimE.debug`), so they don't share the installed app's
   Accessibility permission: grant it separately to use these.
 
