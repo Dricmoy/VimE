@@ -18,7 +18,7 @@ cat <<MD
 
 ---
 
-**Install or update:** \`brew install --cask dricmoy/tap/vime\` (or \`brew upgrade --cask vime\`), or download \`VimE-$VERSION.dmg\` below.
+**Install:** \`brew tap dricmoy/tap && brew trust --cask dricmoy/tap/vime && brew install --cask dricmoy/tap/vime\`, or download \`VimE-$VERSION.dmg\` below. **Update:** \`brew upgrade --cask vime\`.
 
 VimE isn't notarized by Apple yet, so macOS blocks the first launch of each new version: open it once, then allow it in System Settings → Privacy & Security → Open Anyway. The Accessibility permission carries over between releases.
 MD

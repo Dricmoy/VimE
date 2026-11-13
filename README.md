@@ -24,6 +24,8 @@ tested yet; see [Status](#status).
 With [Homebrew](https://brew.sh):
 
 ```sh
+brew tap dricmoy/tap
+brew trust --cask dricmoy/tap/vime   # Homebrew only loads casks from other taps once you trust them
 brew install --cask dricmoy/tap/vime
 ```
 
