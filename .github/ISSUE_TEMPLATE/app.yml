@@ -1,0 +1,30 @@
+name: App doesn't work well
+description: Missing, wrong or misplaced hints in a particular app, or keys that clash with it
+labels: [app support]
+body:
+  - type: input
+    id: app
+    attributes:
+      label: App and version
+      placeholder: e.g. Obsidian 1.9.2
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What goes wrong
+      description: Which buttons or links have no hint, which hints are wrong, or which keys clash. A screenshot helps.
+    validations:
+      required: true
+  - type: input
+    id: rule
+    attributes:
+      label: VimE rule for this app
+      description: On, ⌥F only or Off (menu bar icon).
+  - type: input
+    id: versions
+    attributes:
+      label: VimE and macOS versions
+      placeholder: e.g. VimE 0.1.0, macOS 26.1
+    validations:
+      required: true

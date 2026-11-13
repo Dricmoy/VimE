@@ -1,14 +1,20 @@
 #!/bin/bash
 # Re-signs a built VimE.app with the local identity from setup-signing.sh.
 # A stable signature is what lets macOS remember the Accessibility permission across builds.
+# Releases set VIME_SIGN_IDENTITY, VIME_SIGN_KEYCHAIN and VIME_SIGN_PASS_FILE (scripts/import-release-signing.sh)
+# and VIME_SIGN_REQUIRED=1, so a release can never go out ad-hoc signed.
 set -euo pipefail
 
 APP="$1"
-NAME="VimE Local Signing"
-KEYCHAIN="$HOME/Library/Keychains/vime-signing.keychain-db"
-PASS_FILE="$HOME/.config/vime/signing-keychain-password"
+NAME="${VIME_SIGN_IDENTITY:-VimE Local Signing}"
+KEYCHAIN="${VIME_SIGN_KEYCHAIN:-$HOME/Library/Keychains/vime-signing.keychain-db}"
+PASS_FILE="${VIME_SIGN_PASS_FILE:-$HOME/.config/vime/signing-keychain-password}"
 
 if [ ! -f "$KEYCHAIN" ] || [ ! -f "$PASS_FILE" ]; then
+  if [ "${VIME_SIGN_REQUIRED:-0}" = 1 ]; then
+    echo "error: signing identity '$NAME' not found" >&2
+    exit 1
+  fi
   echo "warning: no local signing identity; VimE stays ad-hoc signed. Run: make signing" >&2
   exit 0
 fi

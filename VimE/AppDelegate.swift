@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var onboarding = Onboarding(state: state)
     private let settings = SettingsWindow()
     private let toast = Toast()
+    private let updates = UpdateChecker()
     /// The app the menu bar's per-app switch applies to: the frontmost app other than VimE.
     private var currentApp: NSRunningApplication?
 
@@ -37,6 +38,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         trackCurrentApp()
 
+        updates.onResult = { [weak self] in self?.updateChecked($0) }
+        state.checkForUpdatesNow = { [weak self] in
+            self?.state.updateStatus = "Checking…"
+            self?.updates.checkNow()
+        }
         applyState()
         state.onChange = { [weak self] in self?.applyState() }
         controller.start()
@@ -68,6 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         controller.badgeSize = state.badgeSize
         controller.indicatorWhileTyping = state.indicatorWhileTyping
         controller.indicatorPosition = state.indicatorPosition
+        updates.isEnabled = state.checkForUpdates
         statusItem.isVisible = state.showMenuBarIcon
         statusItem.button?.appearsDisabled = !state.enabled
 
@@ -206,6 +213,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             status = state.bareKeys && rule == .normal ? "Active — f for hints, ? for keys" : "Active — ⌥F for hints"
         }
         menu.addItem(NSMenuItem(title: status, action: nil, keyEquivalent: ""))
+        if let release = state.availableRelease {
+            let item = NSMenuItem(title: "VimE \(release.version) Is Out…", action: #selector(showRelease),
+                                  keyEquivalent: "")
+            item.target = self
+            item.toolTip = "Opens the release notes. Update with: brew upgrade --cask vime"
+            menu.addItem(item)
+        }
         menu.addItem(.separator())
 
         // The key equivalents only label the items; the event tap handles the shortcuts.
@@ -297,6 +311,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         image.isTemplate = true
         return image
+    }
+
+    /// Shows what the update check found. A new version gets one short message, the first time it's seen.
+    private func updateChecked(_ result: Result<UpdateChecker.Release?, Error>) {
+        switch result {
+        case .success(let release):
+            state.availableRelease = release
+            state.updateStatus = release.map { "VimE \($0.version) is out" } ?? "You're up to date"
+            guard let release, UserDefaults.standard.string(forKey: "announcedRelease") != release.version else {
+                return
+            }
+            UserDefaults.standard.set(release.version, forKey: "announcedRelease")
+            toast.show("VimE \(release.version) is out", detail: "See the menu bar icon", seconds: 3)
+        case .failure:
+            state.updateStatus = "Couldn't reach GitHub"
+        }
+    }
+
+    @objc private func showRelease() {
+        NSWorkspace.shared.open(state.availableRelease?.page ?? UpdateChecker.releasesPage)
     }
 
     @objc private func toggleEnabled() {

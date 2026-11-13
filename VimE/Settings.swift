@@ -36,6 +36,26 @@ struct SettingsView: View {
                 .toggleStyle(.switch)
             }
 
+            Section {
+                Toggle("Tell me when a new version is out", isOn: $state.checkForUpdates).toggleStyle(.switch)
+                HStack {
+                    Text("VimE \(UpdateChecker.currentVersion)")
+                    if let status = state.updateStatus {
+                        Text("· \(status)").foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if let release = state.availableRelease {
+                        Button("Release Notes…") { NSWorkspace.shared.open(release.page) }
+                    }
+                    Button("Check Now") { state.checkForUpdatesNow() }
+                }
+            } header: {
+                Text("Updates")
+            } footer: {
+                Text("Checks GitHub once a day and only reads the latest version number. To update: brew upgrade --cask vime, or download it from the releases page.")
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Permissions") {
                 HStack {
                     Circle().fill(state.trusted ? Color.green : Color.orange).frame(width: 9, height: 9)

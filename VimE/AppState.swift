@@ -55,6 +55,14 @@ final class AppState: ObservableObject {
     @Published var indicatorWhileTyping = AppState.load("indicatorWhileTyping", default: false) {
         didSet { save("indicatorWhileTyping", indicatorWhileTyping) }
     }
+    /// Ask GitHub once a day whether a newer release is out. Never downloads anything.
+    @Published var checkForUpdates = AppState.load("checkForUpdates", default: true) {
+        didSet { save("checkForUpdates", checkForUpdates) }
+    }
+    /// What the last update check found, for the menu and Settings.
+    @Published var availableRelease: UpdateChecker.Release?
+    @Published var updateStatus: String?
+    var checkForUpdatesNow: () -> Void = {}
     @Published var tapRunning = false {
         didSet { onChange() }
     }

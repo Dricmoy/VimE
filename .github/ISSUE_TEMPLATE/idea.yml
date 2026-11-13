@@ -1,0 +1,11 @@
+name: Idea
+description: A feature or change you'd like
+labels: [idea]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like VimE to do
+      description: And when you'd use it. Vimium or Vimium C behaviour you miss is a good reference.
+    validations:
+      required: true

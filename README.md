@@ -1,8 +1,11 @@
 # VimE — vim everywhere
 
-> **Work in progress.** This is a personal project, not a finished product. Things break, features are
-> half-done, and behaviour changes between builds. There is no signed release yet; you build it
-> yourself. See [Status](#status) for what is and isn't tested.
+[![CI](https://github.com/Dricmoy/VimE/actions/workflows/ci.yml/badge.svg)](https://github.com/Dricmoy/VimE/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/Dricmoy/VimE)](https://github.com/Dricmoy/VimE/releases/latest)
+
+> **Early days (0.x).** VimE works well in the apps listed under [Status](#status), but expect rough
+> edges elsewhere and behaviour that changes between releases. Reports of apps where it misbehaves are
+> the most useful thing you can send.
 
 Vimium C-style keyboard control for macOS, outside the browser too. Press `⌥F` in any app and every
 button, link, tab and menu gets a short label; type the label to click it. Scroll with `hjkl`. It
@@ -15,6 +18,31 @@ tested yet; see [Status](#status).
 ![Hint labels in Chrome on Hacker News](docs/hints.png)
 
 *Chrome shown here. Screenshots of a native app and an Electron app are still to come.*
+
+## Install
+
+With [Homebrew](https://brew.sh):
+
+```sh
+brew install --cask dricmoy/tap/vime
+```
+
+Or download `VimE-<version>.dmg` from the [latest release](https://github.com/Dricmoy/VimE/releases/latest)
+and drag VimE to Applications. Requires macOS 14 or later.
+
+VimE isn't notarized by Apple yet, so macOS blocks the first launch: open it once, then allow it in
+System Settings → Privacy & Security → **Open Anyway**. The setup window then walks you through granting
+Accessibility access, which is all VimE needs. Nothing you type or see leaves your Mac.
+
+**Updating:** `brew upgrade --cask vime`, or download the new release. VimE checks GitHub once a day and
+says when a new version is out (Settings → General → Updates; it only reads the latest version number and
+can be turned off). Every release is signed with the same certificate, so the Accessibility permission
+carries over. Each new version needs Open Anyway once, until VimE is notarized.
+
+Switching from a copy you built yourself: delete `/Applications/VimE.app` first (your settings are kept),
+then grant Accessibility once more, since your build was signed with your own certificate.
+
+To build it yourself instead, see [Building from source](#building-from-source).
 
 ## Keys
 
@@ -85,7 +113,7 @@ Works, tested by hand:
 
 - Hints in native apps (Finder, System Settings…) and Chrome, including the web page.
 - Scrolling, cheat sheet, per-app rules, menu bar switch, setup flow.
-- 83 unit tests for the core logic (`make test`).
+- 87 unit tests for the core logic (`make test`).
 
 Built but not yet tried by hand: the `⌃⌥⌘V` / `⌃⌥⌘⇧V` shortcuts and their on-screen message, and the
 opt-in default.
@@ -96,13 +124,14 @@ Known issues:
 
 - In Chrome, links hidden with `opacity: 0`, `clip-path`, `transform: scale(0)`, or covered by another
   element still get hints. Chrome reports them to Accessibility clients exactly like visible links.
-- No Developer ID signing or notarization, so a downloaded .dmg needs Privacy & Security → Open Anyway.
+- No Developer ID signing or notarization yet, so each release needs Privacy & Security → Open Anyway once.
 - `⌥F` and `⌃⌥⌘V` match the key in the US-layout position of F and V, so on other layouts they may
   sit on a different letter. Plain keys (`f`, `hjkl`…) follow the typed character.
 
-Built but not yet tried by hand: game detection against a real game, the mode indicator while typing.
+Built but not yet tried by hand: game detection against a real game, the mode indicator while typing,
+the new-version notice.
 
-## Install
+## Building from source
 
 Requires macOS 14+, Xcode, and XcodeGen (`brew install xcodegen`).
 
@@ -111,10 +140,9 @@ git clone https://github.com/Dricmoy/VimE.git && cd VimE
 make setup    # once per Mac: a local signing identity, then a Release build into /Applications
 ```
 
-On first launch the setup window walks through granting Accessibility access. That permission is
-all VimE needs; nothing leaves your Mac.
+On first launch the setup window walks through granting Accessibility access.
 
-To get the latest version later:
+To get the latest code later:
 
 ```sh
 make update   # git pull, rebuild and reinstall; settings and the Accessibility permission are kept
@@ -130,14 +158,16 @@ make install  # rebuild and reinstall without pulling
 make test     # unit tests for VimECore
 make run      # build and launch from the build folder
 make dmg      # build.noindex/VimE.dmg, drag-to-Applications installer
+make package  # what a release ships: VimE-<version>.zip and .dmg
 make icon     # redraw VimE/AppIcon.icns from scripts/make-icon.swift
 ```
 
 Without the signing identity (`make signing`, part of `make setup`), builds are ad-hoc signed and
 macOS forgets the Accessibility permission on every rebuild. The .dmg is signed with the same local
 identity, not an Apple Developer ID, so on another Mac macOS blocks the first open: allow it in
-System Settings → Privacy & Security → Open Anyway. Building on each Mac with `make setup` avoids
-that.
+System Settings → Privacy & Security → Open Anyway.
+
+Releases are built and signed by GitHub Actions; see [CONTRIBUTING.md](CONTRIBUTING.md#releasing-maintainer).
 
 ## Troubleshooting
 
@@ -148,8 +178,8 @@ that.
   bar icon or with `⌃⌥⌘⇧V`.
 - **A browser's windows animate slowly.** A side effect of the Chromium Accessibility switch; see
   the notes below.
-- **Uninstall.** Quit from the menu bar icon, delete `/Applications/VimE.app`, and optionally run
-  `tccutil reset Accessibility com.dric.VimE`.
+- **Uninstall.** Quit from the menu bar icon, then `brew uninstall --cask vime` (add `--zap` to remove
+  settings too) or delete `/Applications/VimE.app`. Optionally run `tccutil reset Accessibility com.dric.VimE`.
 
 ## How it works
 
@@ -200,7 +230,8 @@ Notes:
 - `VimE/`: macOS glue. Event tap, Accessibility tree walk, overlay panels, cheat sheet, toast,
   menu bar, setup and Settings.
 - `VimECoreTests/`: XCTest suite for `VimECore`.
-- `scripts/`: signing, .dmg and icon scripts used by the Makefile.
+- `scripts/`: signing, release, .dmg and icon scripts used by the Makefile and CI.
+- `.github/workflows/`: CI (tests and a release build on every push and pull request) and releases.
 
 ## Credits
 
@@ -209,4 +240,5 @@ the hint label algorithm and alphabet follow Vimium's.
 
 ## License
 
-MIT, see [LICENSE](LICENSE). This is a one-person project; please open an issue before a large PR.
+MIT, see [LICENSE](LICENSE). Contributions welcome: see [CONTRIBUTING.md](CONTRIBUTING.md), and please
+open an issue before a large pull request. What changed in each release: [CHANGELOG.md](CHANGELOG.md).

@@ -1,0 +1,71 @@
+# Runs on a version tag (make release V=1.2.3): tests, builds and signs VimE, publishes the GitHub release
+# with the notes from CHANGELOG.md, and points the Homebrew cask in Dricmoy/homebrew-tap at it.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 40
+    env:
+      PRERELEASE: ${{ contains(github.ref_name, '-') }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      - run: brew install xcodegen
+      - name: Test
+        run: make test
+      - name: Release notes
+        run: scripts/release-notes.sh "$VERSION" > "$RUNNER_TEMP/notes.md"
+      - name: Signing identity
+        env:
+          RELEASE_CERT_P12: ${{ secrets.RELEASE_CERT_P12 }}
+          RELEASE_CERT_PASSWORD: ${{ secrets.RELEASE_CERT_PASSWORD }}
+        run: scripts/import-release-signing.sh
+      - name: Build and sign
+        run: make package VERSION="$VERSION" BUILD="${{ github.run_number }}"
+      - name: Check the signature
+        run: |
+          app=build.noindex/Build/Products/Release/VimE.app
+          codesign --verify --deep --strict "$app"
+          codesign -dvv "$app" 2>&1 | grep -q "Authority=VimE Release Signing"
+          [ "$(defaults read "$PWD/$app/Contents/Info" CFBundleShortVersionString)" = "$VERSION" ]
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=()
+          [ "$PRERELEASE" = true ] && flags+=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" --verify-tag "${flags[@]}" --title "VimE $VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            "build.noindex/VimE-$VERSION.zip" "build.noindex/VimE-$VERSION.dmg"
+      - name: Check out the Homebrew tap
+        if: env.PRERELEASE == 'false'
+        uses: actions/checkout@v5
+        with:
+          repository: Dricmoy/homebrew-tap
+          ssh-key: ${{ secrets.TAP_DEPLOY_KEY }}
+          path: tap
+      - name: Update the Homebrew cask
+        if: env.PRERELEASE == 'false'
+        run: |
+          sha=$(shasum -a 256 "build.noindex/VimE-$VERSION.zip" | cut -d ' ' -f 1)
+          mkdir -p tap/Casks
+          scripts/write-cask.sh "$VERSION" "$sha" > tap/Casks/vime.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/vime.rb
+          git commit -m "vime $VERSION"
+          git push

@@ -1,0 +1,40 @@
+name: Bug report
+description: Something VimE does wrong, or a crash
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what VimE did instead.
+    validations:
+      required: true
+  - type: input
+    id: app
+    attributes:
+      label: Which app were you in
+      placeholder: e.g. Chrome 142, Finder, VS Code
+  - type: input
+    id: vime
+    attributes:
+      label: VimE version
+      description: Settings → General → Updates shows it.
+      placeholder: e.g. 0.1.0, or a commit if you built it yourself
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: e.g. macOS 26.1, Apple silicon
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log (optional)
+      description: |
+        Run this in Terminal, reproduce the problem, then paste the output. It shows the keys VimE acted on,
+        not what you typed elsewhere.
+        `/usr/bin/log stream --level debug --predicate 'subsystem == "com.dric.VimE"'`
+      render: text

@@ -736,3 +736,37 @@ final class SettingsArchiveAppearanceTests: XCTestCase {
         XCTAssertEqual(read.rule, .normal)
     }
 }
+
+final class UpdateCheckTests: XCTestCase {
+    func testParsesTagsAndIgnoresSuffixes() {
+        XCTAssertEqual(ReleaseVersion("v1.2.3")?.parts, [1, 2, 3])
+        XCTAssertEqual(ReleaseVersion("0.2")?.description, "0.2.0")
+        XCTAssertEqual(ReleaseVersion("1.4.0-beta.2"), ReleaseVersion("1.4"))
+        XCTAssertEqual(ReleaseVersion("2.0+77"), ReleaseVersion("2"))
+        XCTAssertNil(ReleaseVersion(""))
+        XCTAssertNil(ReleaseVersion("latest"))
+        XCTAssertNil(ReleaseVersion("1..2"))
+        XCTAssertNil(ReleaseVersion("1.2.3.4.5"))
+    }
+
+    func testOrdersNumericallyNotAlphabetically() {
+        XCTAssertLessThan(ReleaseVersion("0.9.0")!, ReleaseVersion("0.10.0")!)
+        XCTAssertLessThan(ReleaseVersion("1.2")!, ReleaseVersion("1.2.1")!)
+        XCTAssertFalse(ReleaseVersion("1.2.0")! < ReleaseVersion("1.2")!)
+    }
+
+    func testNewerOnlyWhenAheadAndReadable() {
+        XCTAssertEqual(UpdateCheck.newer(latestTag: "v0.2.0", current: "0.1.0")?.description, "0.2.0")
+        XCTAssertNil(UpdateCheck.newer(latestTag: "v0.1.0", current: "0.1.0"))
+        XCTAssertNil(UpdateCheck.newer(latestTag: "v0.1.0", current: "0.2.0"))  // A local build ahead of the release.
+        XCTAssertNil(UpdateCheck.newer(latestTag: "nightly", current: "0.1.0"))
+    }
+
+    func testDueOncePerDay() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        XCTAssertTrue(UpdateCheck.isDue(lastCheck: nil, now: now))
+        XCTAssertFalse(UpdateCheck.isDue(lastCheck: now.addingTimeInterval(-3600), now: now))
+        XCTAssertTrue(UpdateCheck.isDue(lastCheck: now.addingTimeInterval(-UpdateCheck.interval), now: now))
+        XCTAssertTrue(UpdateCheck.isDue(lastCheck: now.addingTimeInterval(3600), now: now))  // Clock went back.
+    }
+}
