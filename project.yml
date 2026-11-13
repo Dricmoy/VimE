@@ -13,16 +13,17 @@ settings:
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: "-"
     DEVELOPMENT_TEAM: ""
-    ENABLE_HARDENED_RUNTIME: NO
+    ENABLE_HARDENED_RUNTIME: YES
+    # Xcode's debug builds load the app's code from a separate VimE.debug.dylib; with no Team ID,
+    # hardened runtime's library validation refuses to load it.
+    ENABLE_DEBUG_DYLIB: NO
 targets:
+  # Static, so nothing is embedded: hardened runtime's library validation rejects embedded frameworks
+  # signed by the local identity, which has no Team ID.
   VimECore:
-    type: framework
+    type: library.static
     platform: macOS
     sources: [VimECore]
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.dric.VimECore
-        GENERATE_INFOPLIST_FILE: YES
   VimE:
     type: application
     platform: macOS
@@ -42,6 +43,11 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dric.VimE
+      configs:
+        # Its own identity, so Debug builds never carry the installed app's Accessibility permission
+        # (or its settings).
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.dric.VimE.debug
   VimECoreTests:
     type: bundle.unit-test
     platform: macOS

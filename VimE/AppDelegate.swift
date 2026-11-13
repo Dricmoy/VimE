@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Accessibility.configureDefaultTimeout()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.image = Self.statusImage()
         statusItem.button?.toolTip = "VimE"
@@ -46,13 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if Permissions.isTrusted(prompt: false) {
             startTap()
         } else {
-            // Poll until the user flips the switch in System Settings.
-            permissionTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] t in
-                guard Permissions.isTrusted(prompt: false) else { return }
-                t.invalidate()
-                self?.state.trusted = true
-                self?.startTap()
-            }
+            waitForPermission()
         }
 
         if !Onboarding.isCompleted || !Permissions.isTrusted(prompt: false) {
@@ -68,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         controller.isEnabled = state.enabled
         controller.plainKeysEnabled = state.bareKeys
         controller.rules = state.appRules
+        controller.options = state.appOptions
         statusItem.isVisible = state.showMenuBarIcon
         statusItem.button?.appearsDisabled = !state.enabled
 
@@ -122,12 +118,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func startTap() {
         let tap = EventTap { [weak self] input in self?.controller.handle(input) ?? false }
-        if tap.start() {
-            self.tap = tap
-            state.tapRunning = true
-        } else {
-            NSLog("VimE: could not create event tap")
+        guard tap.start() else {
+            // macOS can take a moment to apply a fresh permission: keep trying.
+            NSLog("VimE: could not create event tap; retrying")
+            waitForPermission()
+            return
         }
+        self.tap = tap
+        state.tapRunning = true
+        watchPermission()
+    }
+
+    /// Polls until the user turns VimE on in System Settings (and the tap can be created).
+    private func waitForPermission() {
+        permissionTimer?.invalidate()
+        permissionTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] t in
+            guard Permissions.isTrusted(prompt: false) else { return }
+            t.invalidate()
+            self?.state.trusted = true
+            self?.startTap()
+        }
+    }
+
+    /// Notices the permission being turned off or reset while VimE runs, removes the tap, and goes
+    /// back to waiting, so the menu and Settings tell the truth.
+    private func watchPermission() {
+        permissionTimer?.invalidate()
+        permissionTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] t in
+            guard let self, !Permissions.isTrusted(prompt: false) else { return }
+            t.invalidate()
+            self.tap?.stop()
+            self.tap = nil
+            self.state.tapRunning = false
+            self.state.trusted = false
+            self.waitForPermission()
+        }
+    }
+
+    /// Hands Chromium browsers back their normal (faster) Accessibility mode.
+    func applicationWillTerminate(_ notification: Notification) {
+        Accessibility.releaseTrees(wait: true)
     }
 
     private func trackCurrentApp() {
@@ -179,6 +209,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 item.toolTip = rule.detail
                 menu.addItem(item)
             }
+            let esc = NSMenuItem(title: "Esc Leaves Text Fields", action: #selector(toggleEscOption(_:)),
+                                 keyEquivalent: "")
+            esc.target = self
+            esc.representedObject = id
+            esc.state = state.appOptions.value(.escLeavesTextField, for: id) ? .on : .off
+            esc.indentationLevel = 1
+            esc.toolTip = "In web pages and Electron apps, Esc in a text field moves focus out of it so plain keys work. Only when the app is On."
+            menu.addItem(esc)
         }
         menu.addItem(.separator())
 
@@ -207,6 +245,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             toast.show("\(app.localizedName ?? id): \(rule.title)",
                        detail: state.enabled ? rule.detail : "VimE is paused everywhere")
         }
+    }
+
+    /// Flips the option for this app; back to "follow the default" when that matches.
+    @objc private func toggleEscOption(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        let new = !state.appOptions.value(.escLeavesTextField, for: id)
+        state.appOptions.set(.escLeavesTextField,
+                             new == state.appOptions.defaultValue(.escLeavesTextField) ? nil : new, for: id)
     }
 
     @objc private func setRule(_ sender: NSMenuItem) {

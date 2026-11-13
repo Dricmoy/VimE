@@ -10,14 +10,14 @@ public enum AppRule: String, CaseIterable {
 
 /// Per-app rules: the user's overrides, then built-in defaults, then `fallback` for every other app.
 public struct AppRules: Equatable {
-    /// Apps where every key matters.
+    /// Apps where every key matters. Terminals are Off: ⌥F is "forward word" in shells and Emacs.
     public static let defaults: [String: AppRule] = [
-        "com.apple.Terminal": .chordOnly,
-        "com.googlecode.iterm2": .chordOnly,
-        "com.mitchellh.ghostty": .chordOnly,
-        "net.kovidgoyal.kitty": .chordOnly,
-        "org.alacritty": .chordOnly,
-        "dev.warp.Warp-Stable": .chordOnly,
+        "com.apple.Terminal": .off,
+        "com.googlecode.iterm2": .off,
+        "com.mitchellh.ghostty": .off,
+        "net.kovidgoyal.kitty": .off,
+        "org.alacritty": .off,
+        "dev.warp.Warp-Stable": .off,
         "org.vim.MacVim": .chordOnly,
         "com.qvacua.VimR": .chordOnly,
     ]

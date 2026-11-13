@@ -14,7 +14,8 @@ if [ ! -f "$KEYCHAIN" ] || [ ! -f "$PASS_FILE" ]; then
 fi
 security unlock-keychain -p "$(cat "$PASS_FILE")" "$KEYCHAIN"
 
-sign() { codesign --force --sign "$NAME" --keychain "$KEYCHAIN" "$1" 2>&1 | grep -v "replacing existing signature" || true; }
+# --options runtime keeps the hardened runtime that Xcode's own signature had.
+sign() { codesign --force --options runtime --sign "$NAME" --keychain "$KEYCHAIN" "$1" 2>&1 | grep -v "replacing existing signature" || true; }
 # Inside out: nested code first, the app bundle last.
 for fw in "$APP"/Contents/Frameworks/*.framework; do [ -e "$fw" ] && sign "$fw"; done
 for lib in "$APP"/Contents/MacOS/*.dylib; do [ -e "$lib" ] && sign "$lib"; done

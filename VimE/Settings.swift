@@ -15,6 +15,15 @@ struct SettingsView: View {
 
             Section("General") {
                 PreferenceToggles(state: state)
+                Toggle(isOn: Binding(get: { state.appOptions.defaultValue(.escLeavesTextField) },
+                                     set: { state.appOptions.defaults[.escLeavesTextField] = $0 })) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Esc leaves text fields")
+                        Text("In apps that are On: Esc in a text field on a web page or in an Electron app moves you out of it, so plain keys work again. Change it per app below.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.switch)
             }
 
             Section("Permissions") {
@@ -27,8 +36,7 @@ struct SettingsView: View {
             }
 
             Section {
-                ForEach(state.appRules.listed.filter { AppInfo.isInstalled($0) || state.appRules.overrides[$0] != nil },
-                        id: \.self) { id in
+                ForEach(listedApps, id: \.self) { id in
                     AppRuleRow(bundleID: id, state: state)
                 }
                 Button("Add App…", action: addApp)
@@ -51,6 +59,13 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 500, height: 720)
+    }
+
+    /// Apps with a rule or an option of their own.
+    private var listedApps: [String] {
+        Set(state.appRules.listed).union(state.appOptions.overrides.keys).sorted()
+            .filter { AppInfo.isInstalled($0) || state.appRules.overrides[$0] != nil
+                || state.appOptions.overrides[$0] != nil }
     }
 
     private func addApp() {
@@ -84,9 +99,25 @@ private struct AppRuleRow: View {
             }
             .labelsHidden()
             .fixedSize()
-            if state.appRules.overrides[bundleID] != nil, AppRules.defaults[bundleID] == nil {
+            Menu {
+                Picker("Esc leaves text fields", selection: Binding(
+                    get: { state.appOptions.override(.escLeavesTextField, for: bundleID) },
+                    set: { state.appOptions.set(.escLeavesTextField, $0, for: bundleID) })) {
+                    Text("Default (\(state.appOptions.defaultValue(.escLeavesTextField) ? "On" : "Off"))").tag(Bool?.none)
+                    Text("On").tag(Bool?.some(true))
+                    Text("Off").tag(Bool?.some(false))
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("More options for \(AppInfo.name(bundleID))")
+            if state.appRules.overrides[bundleID] != nil || state.appOptions.overrides[bundleID] != nil,
+               AppRules.defaults[bundleID] == nil {
                 Button {
                     state.appRules.reset(bundleID)
+                    for option in AppOption.allCases { state.appOptions.set(option, nil, for: bundleID) }
                 } label: {
                     Image(systemName: "minus.circle")
                 }

@@ -46,4 +46,13 @@ public enum ScrollCommand: Equatable {
         }
         return out
     }
+
+    /// Where to send scroll events. Scroll events land on whatever is under their location, and
+    /// posting them moves the pointer there. So when the pointer is already over the area (and over
+    /// the app, not a window on top of it), scroll right under it and leave it alone; otherwise aim at
+    /// the area's center and put the pointer back afterwards.
+    public static func aim(area: CGRect, pointer: CGPoint, pointerOverApp: Bool) -> (at: CGPoint, restorePointer: Bool) {
+        if pointerOverApp, area.contains(pointer) { return (pointer, false) }
+        return (CGPoint(x: area.midX, y: area.midY), true)
+    }
 }

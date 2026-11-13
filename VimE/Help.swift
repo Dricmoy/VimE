@@ -19,6 +19,7 @@ enum Shortcuts {
                 Shortcut(keys: "d  u", action: "Half page down / up"),
                 Shortcut(keys: "gg  G", action: "Top / bottom"),
                 Shortcut(keys: "?", action: "Show this list"),
+                Shortcut(keys: "Esc", action: "Leave a text field (web and Electron apps)"),
             ]
         }
         list += [

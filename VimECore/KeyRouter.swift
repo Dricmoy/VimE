@@ -1,3 +1,5 @@
+import Foundation
+
 /// A key press as seen by the event tap, reduced to what routing needs.
 public struct KeyInput: Equatable {
     public var keyCode: UInt16
@@ -40,6 +42,10 @@ public enum KeyAction: Equatable {
     case swallow
     case enterHint
     case exitHint
+    /// Leave hint mode and let the key reach the app (⌘Tab, ⌘W…).
+    case exitHintAndPass
+    /// Esc in a text field: move focus out of it, so plain keys work again.
+    case leaveTextField
     case backspace
     case type(Character, Click)
     case scroll(ScrollCommand, isRepeat: Bool)
@@ -66,8 +72,36 @@ public struct KeyRouter {
     public static let plainKeys: Set<String> = ["f", "h", "j", "k", "l", "d", "u", "g", "G", "?"]
 
     public private(set) var pendingG = false
+    private var pendingGAt: TimeInterval = 0
+    /// The second `g` must follow within this many seconds, as in Vimium.
+    public static let gTimeout: TimeInterval = 1
 
     public init() {}
+
+    /// Whether VimE could act on this key outside hint mode: ⌥F, or an unmodified plain key.
+    /// Everything else (ordinary typing, shortcuts) passes straight through without any
+    /// Accessibility calls.
+    public static func mightAct(_ k: KeyInput) -> Bool {
+        if k.option && !k.command && !k.control && k.keyCode == fKeyCode { return true }
+        if k.keyCode == escapeKeyCode && !k.option && !k.command && !k.control && !k.shift { return true }
+        return !k.option && !k.command && !k.control && plainKeys.contains(k.characters)
+    }
+
+    /// Forgets a pending `g`, for keys handled without routing.
+    public mutating func clearPending() {
+        pendingG = false
+    }
+
+    /// Whether a `⌘`-letter in hint mode means "⌘-click this label" rather than a shortcut for the app:
+    /// only when the letter continues a label and isn't a standard app shortcut.
+    public static func commandMeansClick(_ c: Character, session: HintSession) -> Bool {
+        !appShortcutLetters.contains(c) && session.labels.contains { $0.hasPrefix(session.typed + String(c)) }
+    }
+
+    /// ⌘ with these always goes to the app while hints show: close, quit, hide, minimise, new tab,
+    /// new window, reload, and the edit shortcuts. A label using one of them is ⌘-clicked by holding
+    /// ⌘ on one of its other letters.
+    public static let appShortcutLetters: Set<Character> = ["w", "q", "h", "m", "t", "n", "r", "c", "v", "x", "z", "a"]
 
     /// Checked before anything else. Matches held-down repeats too, so they don't leak into the app;
     /// the caller acts only on the first press.
@@ -77,28 +111,36 @@ public struct KeyRouter {
     }
 
     /// `focusIsEditable` costs an Accessibility round trip, so it is only called for VimE's plain keys.
-    public mutating func route(_ k: KeyInput, mode: Mode, plainKeysAllowed: Bool,
-                               focusIsEditable: () -> Bool) -> KeyAction {
+    /// `escLeavesTextField`: Esc in a text field means "leave it" (only offered where plain keys work).
+    public mutating func route(_ k: KeyInput, mode: Mode, plainKeysAllowed: Bool, escLeavesTextField: Bool = false,
+                               now: TimeInterval = 0, focusIsEditable: () -> Bool) -> KeyAction {
         switch mode {
         case .passthrough:
-            return routePassthrough(k, plainKeysAllowed: plainKeysAllowed, focusIsEditable: focusIsEditable)
+            if k.keyCode == Self.escapeKeyCode && !k.option && !k.command && !k.control && !k.shift {
+                pendingG = false
+                guard plainKeysAllowed, escLeavesTextField, !k.isRepeat, focusIsEditable() else { return .pass }
+                return .leaveTextField
+            }
+            return routePassthrough(k, plainKeysAllowed: plainKeysAllowed, now: now, focusIsEditable: focusIsEditable)
         case .hint:
             pendingG = false
             if k.keyCode == Self.escapeKeyCode { return .exitHint }
+            // ⌥F again closes hints, like pressing a toggle twice.
+            if k.option && !k.command && !k.control && k.keyCode == Self.fKeyCode { return k.isRepeat ? .swallow : .exitHint }
             if k.isRepeat { return .swallow }
             if k.keyCode == Self.deleteKeyCode { return .backspace }
             if k.control { return .exitHint }
             if k.characters.count == 1, let c = k.characters.lowercased().first, c.isLetter {
                 return .type(c, k.command ? .command : k.shift ? .secondary : .primary)
             }
-            // ⌘ with anything else (⌘Tab, ⌘Space…) means the user moved on.
-            return k.command ? .exitHint : .swallow
+            // ⌘ with anything else (⌘Tab, ⌘Space…) means the user moved on: let it through.
+            return k.command ? .exitHintAndPass : .swallow
         }
     }
 
-    private mutating func routePassthrough(_ k: KeyInput, plainKeysAllowed: Bool,
+    private mutating func routePassthrough(_ k: KeyInput, plainKeysAllowed: Bool, now: TimeInterval,
                                            focusIsEditable: () -> Bool) -> KeyAction {
-        let wasPendingG = pendingG
+        let wasPendingG = pendingG && now - pendingGAt <= Self.gTimeout
         pendingG = false
 
         // ⌥F works everywhere, including text fields.
@@ -122,6 +164,7 @@ public struct KeyRouter {
         case "g":
             if wasPendingG { return .scroll(.top, isRepeat: false) }
             pendingG = true
+            pendingGAt = now
             return .swallow
         default: return .pass
         }

@@ -110,7 +110,27 @@ final class KeyRouterTests: XCTestCase {
         XCTAssertEqual(route(KeyInput(keyCode: 1, characters: "s"), .hint), .type("s", .primary))
         XCTAssertEqual(route(KeyInput(keyCode: 18, characters: "1"), .hint), .swallow)
         XCTAssertEqual(route(KeyInput(keyCode: 8, characters: "c", control: true), .hint), .exitHint)
-        XCTAssertEqual(route(KeyInput(keyCode: 48, characters: "\t", command: true), .hint), .exitHint)
+        XCTAssertEqual(route(KeyInput(keyCode: 48, characters: "\t", command: true), .hint), .exitHintAndPass)
+        XCTAssertEqual(route(KeyInput(keyCode: KeyRouter.fKeyCode, characters: "f", option: true), .hint), .exitHint)
+    }
+
+    func testCommandLetterClicksOnlyWhenItContinuesALabel() {
+        var session = HintSession(labels: ["sa", "sd", "f"])
+        XCTAssertTrue(KeyRouter.commandMeansClick("f", session: session))
+        XCTAssertFalse(KeyRouter.commandMeansClick("w", session: session), "⌘W must reach the app")
+        _ = session.type("s")
+        XCTAssertTrue(KeyRouter.commandMeansClick("d", session: session))
+        XCTAssertFalse(KeyRouter.commandMeansClick("q", session: session))
+    }
+
+    func testPendingGExpires() {
+        var r = KeyRouter()
+        let g = KeyInput(keyCode: 5, characters: "g")
+        XCTAssertEqual(r.route(g, mode: .passthrough, plainKeysAllowed: true, now: 100, focusIsEditable: { false }), .swallow)
+        XCTAssertEqual(r.route(g, mode: .passthrough, plainKeysAllowed: true, now: 101.5, focusIsEditable: { false }), .swallow,
+                       "a g after the timeout starts over")
+        XCTAssertEqual(r.route(g, mode: .passthrough, plainKeysAllowed: true, now: 101.9, focusIsEditable: { false }),
+                       .scroll(.top, isRepeat: false))
     }
 
     func testModifierOnLastLetterPicksClick() {
@@ -144,6 +164,24 @@ final class KeyRouterTests: XCTestCase {
         XCTAssertEqual(route(key("j"), editable: true), .pass)
         XCTAssertEqual(route(key("j"), plain: false), .pass)
         XCTAssertEqual(route(KeyInput(keyCode: 38, characters: "j", command: true)), .pass)
+    }
+
+    func testOrdinaryTypingIsNeverExamined() {
+        XCTAssertTrue(KeyRouter.mightAct(KeyInput(keyCode: KeyRouter.fKeyCode, characters: "f", option: true)))
+        XCTAssertTrue(KeyRouter.mightAct(KeyInput(keyCode: 38, characters: "j")))
+        XCTAssertTrue(KeyRouter.mightAct(KeyInput(keyCode: 5, characters: "G", shift: true)))
+        XCTAssertFalse(KeyRouter.mightAct(KeyInput(keyCode: 0, characters: "a")))
+        XCTAssertFalse(KeyRouter.mightAct(KeyInput(keyCode: 38, characters: "j", command: true)))
+        XCTAssertFalse(KeyRouter.mightAct(KeyInput(keyCode: 49, characters: " ")))
+    }
+
+    func testClearPendingForgetsG() {
+        var r = KeyRouter()
+        _ = r.route(KeyInput(keyCode: 5, characters: "g"), mode: .passthrough, plainKeysAllowed: true,
+                    focusIsEditable: { false })
+        XCTAssertTrue(r.pendingG)
+        r.clearPending()
+        XCTAssertFalse(r.pendingG)
     }
 
     func testGlobalShortcuts() {
@@ -197,6 +235,24 @@ final class ScrollTests: XCTestCase {
         XCTAssertEqual(ScrollCommand.steps(dx: 60, dy: 0, count: 1).first?.dx, 60)
     }
 
+    func testScrollsUnderThePointerWhenItsOverTheArea() {
+        let area = CGRect(x: 100, y: 100, width: 800, height: 600)
+        let aim = ScrollCommand.aim(area: area, pointer: CGPoint(x: 150, y: 650), pointerOverApp: true)
+        XCTAssertEqual(aim.at, CGPoint(x: 150, y: 650))
+        XCTAssertFalse(aim.restorePointer)
+    }
+
+    func testAimsAtTheCenterAndRestoresOtherwise() {
+        let area = CGRect(x: 100, y: 100, width: 800, height: 600)
+        let outside = ScrollCommand.aim(area: area, pointer: CGPoint(x: 10, y: 10), pointerOverApp: false)
+        XCTAssertEqual(outside.at, CGPoint(x: 500, y: 400))
+        XCTAssertTrue(outside.restorePointer)
+        // Over the area but under another app's window: that window would get the scroll.
+        let covered = ScrollCommand.aim(area: area, pointer: CGPoint(x: 150, y: 650), pointerOverApp: false)
+        XCTAssertEqual(covered.at, CGPoint(x: 500, y: 400))
+        XCTAssertTrue(covered.restorePointer)
+    }
+
     func testJumpToEndIsSplitIntoSafeEvents() {
         let d = ScrollCommand.top.delta(viewport: viewport)
         let n = ScrollCommand.minimumSteps(dx: d.dx, dy: d.dy)
@@ -229,7 +285,7 @@ final class GeometryTests: XCTestCase {
 final class AppRulesTests: XCTestCase {
     func testDefaultsAndOverrides() {
         var rules = AppRules(fallback: .normal)
-        XCTAssertEqual(rules.rule(for: "com.apple.Terminal"), .chordOnly)
+        XCTAssertEqual(rules.rule(for: "com.apple.Terminal"), .off)
         XCTAssertEqual(rules.rule(for: "com.microsoft.VSCode"), .normal)
         XCTAssertEqual(rules.rule(for: nil), .normal)
 
@@ -254,7 +310,7 @@ final class AppRulesTests: XCTestCase {
         rules.fallback = .normal
         XCTAssertEqual(rules.rule(for: "com.apple.Safari"), .normal)
         XCTAssertEqual(rules.rule(for: "com.example.SomeGame"), .off)
-        XCTAssertEqual(rules.rule(for: "com.apple.Terminal"), .chordOnly)
+        XCTAssertEqual(rules.rule(for: "com.apple.Terminal"), .off)
     }
 
     func testCycle() {
@@ -267,7 +323,7 @@ final class AppRulesTests: XCTestCase {
 
     func testOnlyDifferencesAreStored() {
         var rules = AppRules(fallback: .normal)
-        rules.set(.chordOnly, for: "com.apple.Terminal")  // same as default
+        rules.set(.off, for: "com.apple.Terminal")        // same as default
         rules.set(.normal, for: "com.apple.Safari")       // same as default
         XCTAssertEqual(rules.overrides, [:])
         rules.set(.off, for: "com.apple.Safari")
@@ -394,5 +450,107 @@ final class VisibilityTests: XCTestCase {
 
     func testUnknownBarsKeepItems() {
         XCTAssertTrue(Visibility.isMenuBarItemShown(item, shownBars: []))
+    }
+}
+
+final class FocusTests: XCTestCase {
+    func testPaletteOptionChecksTheCaret() {
+        // T3 Code's ⌘K palette: the highlighted row is reported as focused.
+        XCTAssertTrue(Focus.shouldCheckCaret(focusAncestorRoles: ["AXGroup", "AXGroup", "AXList", "AXGroup"]))
+    }
+
+    func testButtonsAndPageIgnoreAParkedCaret() {
+        // After leaving a text field, Chromium leaves the caret in it; a button or region isn't typing.
+        XCTAssertFalse(Focus.shouldCheckCaret(focusAncestorRoles: ["AXGroup", "AXGroup", "AXGroup", "AXWebArea"]))
+        XCTAssertFalse(Focus.shouldCheckCaret(focusAncestorRoles: []))
+    }
+
+    func testListTooFarUpDoesNotCount() {
+        let deep = Array(repeating: "AXGroup", count: Focus.optionSearchDepth) + ["AXList"]
+        XCTAssertFalse(Focus.shouldCheckCaret(focusAncestorRoles: deep))
+    }
+}
+
+final class ScrollMotionTests: XCTestCase {
+    func run(_ m: inout ScrollMotion, heldFor: TimeInterval, frame: TimeInterval = 1.0 / 120) -> CGFloat {
+        var total: CGFloat = 0
+        var t: TimeInterval = 0
+        while !m.isFinished && t < 10 {
+            total += m.advance(dt: frame, held: t < heldFor)
+            t += frame
+        }
+        return total
+    }
+
+    func testQuickTapMovesOneStep() {
+        var m = ScrollMotion.held()
+        XCTAssertEqual(run(&m, heldFor: 0), ScrollMotion.minimumDistance, accuracy: 0.5)
+        XCTAssertTrue(m.isFinished)
+    }
+
+    func testHoldingKeepsGoingAndSpeedsUp() {
+        var short = ScrollMotion.held(), long = ScrollMotion.held()
+        let a = run(&short, heldFor: 0.5), b = run(&long, heldFor: 1.0)
+        XCTAssertGreaterThan(a, ScrollMotion.minimumDistance)
+        XCTAssertGreaterThan(b - a, a, "the second half second covers more than the first")
+    }
+
+    func testFramesAreSmallAndEven() {
+        var m = ScrollMotion.held()
+        let first = m.advance(dt: 1.0 / 120, held: true)
+        let second = m.advance(dt: 1.0 / 120, held: true)
+        XCTAssertLessThan(first, 10)
+        XCTAssertEqual(first, second, accuracy: 0.5)
+    }
+
+    func testEasedCoversItsDistanceExactly() {
+        var m = ScrollMotion.eased(distance: 400, duration: 0.2)
+        XCTAssertEqual(run(&m, heldFor: 0), 400, accuracy: 0.01)
+    }
+
+    func testCommandShortcutsReachTheApp() {
+        let session = HintSession(labels: ["w", "s", "sw"])
+        XCTAssertFalse(KeyRouter.commandMeansClick("w", session: session), "⌘W closes the tab even with a W label")
+        XCTAssertTrue(KeyRouter.commandMeansClick("s", session: session))
+    }
+}
+
+final class AppOptionsTests: XCTestCase {
+    func testDefaultsAndOverrides() {
+        var o = AppOptions()
+        XCTAssertTrue(o.value(.escLeavesTextField, for: "com.t3tools.t3code"))
+        o.set(.escLeavesTextField, false, for: "com.tinyspeck.slackmacgap")
+        XCTAssertFalse(o.value(.escLeavesTextField, for: "com.tinyspeck.slackmacgap"))
+        o.defaults[.escLeavesTextField] = false
+        XCTAssertFalse(o.value(.escLeavesTextField, for: "com.t3tools.t3code"))
+        o.set(.escLeavesTextField, true, for: "com.t3tools.t3code")
+        XCTAssertTrue(o.value(.escLeavesTextField, for: "com.t3tools.t3code"))
+        o.set(.escLeavesTextField, nil, for: "com.t3tools.t3code")
+        XCTAssertNil(o.overrides["com.t3tools.t3code"], "nothing stored once it follows the default")
+    }
+
+    func testRoundTripsThroughPlist() {
+        var o = AppOptions(defaults: [.escLeavesTextField: false])
+        o.set(.escLeavesTextField, true, for: "a")
+        let back = AppOptions(defaultsPlist: o.defaultsPlist, plist: o.plist)
+        XCTAssertEqual(back, o)
+        XCTAssertEqual(AppOptions(defaultsPlist: ["bogus": true], plist: ["a": ["bogus": true]]), AppOptions())
+    }
+
+    func testEscLeavesTextFieldOnlyInAFieldWhereVimEIsOn() {
+        var r = KeyRouter()
+        let esc = KeyInput(keyCode: KeyRouter.escapeKeyCode, characters: "\u{1b}")
+        XCTAssertTrue(KeyRouter.mightAct(esc))
+        XCTAssertEqual(r.route(esc, mode: .passthrough, plainKeysAllowed: true, escLeavesTextField: true,
+                               focusIsEditable: { true }), .leaveTextField)
+        XCTAssertEqual(r.route(esc, mode: .passthrough, plainKeysAllowed: true, escLeavesTextField: true,
+                               focusIsEditable: { false }), .pass, "outside a field the app gets Esc")
+        XCTAssertEqual(r.route(esc, mode: .passthrough, plainKeysAllowed: false, escLeavesTextField: true,
+                               focusIsEditable: { true }), .pass, "apps that aren't On keep Esc")
+        XCTAssertEqual(r.route(esc, mode: .passthrough, plainKeysAllowed: true, escLeavesTextField: false,
+                               focusIsEditable: { true }), .pass, "turned off for this app")
+        let shiftEsc = KeyInput(keyCode: KeyRouter.escapeKeyCode, characters: "\u{1b}", shift: true)
+        XCTAssertEqual(r.route(shiftEsc, mode: .passthrough, plainKeysAllowed: true, escLeavesTextField: true,
+                               focusIsEditable: { true }), .pass)
     }
 }

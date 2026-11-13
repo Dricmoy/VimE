@@ -8,6 +8,7 @@ final class EventTap {
 
     private let handler: Handler
     private var port: CFMachPort?
+    private var source: CFRunLoopSource?
 
     init(handler: @escaping Handler) {
         self.handler = handler
@@ -22,9 +23,22 @@ final class EventTap {
         else { return false }
         self.port = port
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, port, 0)
+        self.source = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: port, enable: true)
         return true
+    }
+
+    /// Removes the tap, e.g. when Accessibility permission goes away: a tap left behind after that
+    /// can stall keyboard input.
+    func stop() {
+        if let port {
+            CGEvent.tapEnable(tap: port, enable: false)
+            CFMachPortInvalidate(port)
+        }
+        if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
+        port = nil
+        source = nil
     }
 
     fileprivate func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {

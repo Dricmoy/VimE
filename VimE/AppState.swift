@@ -32,6 +32,16 @@ final class AppState: ObservableObject {
             onChange()
         }
     }
+    /// Per-app behaviour switches and their global defaults.
+    @Published var appOptions = AppOptions(
+        defaultsPlist: UserDefaults.standard.dictionary(forKey: "appOptionDefaults") as? [String: Bool] ?? [:],
+        plist: UserDefaults.standard.dictionary(forKey: "appOptions") as? [String: [String: Bool]] ?? [:]) {
+        didSet {
+            UserDefaults.standard.set(appOptions.defaultsPlist, forKey: "appOptionDefaults")
+            UserDefaults.standard.set(appOptions.plist, forKey: "appOptions")
+            onChange()
+        }
+    }
     @Published var tapRunning = false {
         didSet { onChange() }
     }
